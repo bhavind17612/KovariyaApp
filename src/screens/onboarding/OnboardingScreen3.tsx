@@ -9,11 +9,8 @@ import {
 	Platform,
 	Dimensions,
 	Modal,
-	FlatList,
 	ActivityIndicator,
 	TextInput,
-	Alert,
-	NativeModules
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -29,10 +26,9 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import * as Haptics from 'expo-haptics';
 import { colors, spacing, borderRadius, shadows, textStyles } from '../../theme';
 import { InputField } from '../../components/InputField';
-import DateTimePicker from 'react-native-ui-datepicker';
-import dayjs from 'dayjs';
-
-const { DatePickerModule } = NativeModules;
+import { DatePickerField } from '../../components/DatePickerField';
+import { formatAppDate } from '../../utils/dateFormat';
+import { ageFromIsoDate, toIsoDate } from '../../utils/age';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
@@ -64,7 +60,6 @@ const spStyles = StyleSheet.create({
 });
 
 const GRADES = ['Kindergarten', ...Array.from({ length: 12 }, (_, i) => `Grade ${i + 1}`)];
-const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const currentYear = new Date().getFullYear();
 
 const SHEET_ANIM_CFG = { duration: 320, easing: Easing.out(Easing.cubic) };
@@ -226,8 +221,7 @@ interface Props { navigation: any; }
 export function OnboardingScreen3({ navigation }: Props) {
 	const insets = useSafeAreaInsets();
 	const [childName, setChildName] = useState('');
-	const [dobIso, setDobIso] = useState(() => new Date(currentYear - 8, 0, 1).toISOString());
-	const [showCustomDob, setShowCustomDob] = useState(false);
+	const [dobIso, setDobIso] = useState(() => toIsoDate(new Date(currentYear - 8, 0, 1)));
 	const [grade, setGrade] = useState('');
 	const [showGradeSheet, setShowGradeSheet] = useState(false);
 	const [school, setSchool] = useState('');
@@ -236,9 +230,8 @@ export function OnboardingScreen3({ navigation }: Props) {
 	const [gender, setGender] = useState<string | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
 
-	const dobDate = new Date(dobIso);
-	const ageYears = Math.floor((Date.now() - dobDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25));
-	const formattedDob = `${dobDate.getDate()} ${MONTHS_SHORT[dobDate.getMonth()]} ${dobDate.getFullYear()}`;
+	const ageYears = ageFromIsoDate(dobIso);
+	const formattedDob = formatAppDate(dobIso);
 
 	const screenX = useSharedValue(0);
 	const screenStyle = useAnimatedStyle(() => ({
@@ -268,34 +261,6 @@ export function OnboardingScreen3({ navigation }: Props) {
 	};
 
 	// ── Open date picker ────────────────────────────────────────────────────────
-	const openDatePicker = useCallback(async () => {
-		if (Platform.OS !== 'android') {
-			Alert.alert('Android only', 'This native module runs on Android only.');
-			return;
-		}
-
-		// setLoading(l => ({ ...l, date: true }));
-		try {
-			const today = new Date();
-			const result = await DatePickerModule.showDatePicker({
-				date: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`,
-				minDate: '2000-01-01',
-				maxDate: '2099-12-31',
-				title: 'Select a date',
-				mode: 'calendar',         // 'calendar' | 'spinner'
-			});
-			Alert.alert('result', result);
-			// setSelectedDate(result);      // { year, month, day, dateString }
-		} catch (err) {
-			console.log("error", err)
-			// if (err.code !== 'DISMISSED') {
-			// 	Alert.alert('Error', err.message);
-			// }
-		} finally {
-			// setLoading(l => ({ ...l, date: false }));
-		}
-	}, []);
-
 	return (
 		<SafeAreaView style={styles.safe} edges={['top']}>
 			<KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -337,14 +302,24 @@ export function OnboardingScreen3({ navigation }: Props) {
 
 							<Animated.View entering={FadeInDown.duration(400).delay(150)} style={styles.sectionMargin}>
 								<Text style={styles.label}>Date of Birth</Text>
-								<Pressable style={styles.inputWrap} onPress={() => { openDatePicker(); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
-									<Icon name="cake" size={20} color={colors.textMuted} />
-									<Text style={styles.inputText}>{formattedDob}</Text>
-									<View style={styles.ageBadge}>
-										<Text style={styles.ageBadgeText}>Age {ageYears}</Text>
+								<DatePickerField
+									valueIso={dobIso}
+									onChangeIso={(nextDob) => {
+										setDobIso(nextDob);
+										Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+									}}
+									maximumDate={new Date()}
+									label={null}
+								>
+									<View style={styles.inputWrap}>
+										<Icon name="cake" size={20} color={colors.textMuted} />
+										<Text style={styles.inputText}>{formattedDob}</Text>
+										<View style={styles.ageBadge}>
+											<Text style={styles.ageBadgeText}>Age {ageYears}</Text>
+										</View>
+										<Icon name="keyboard-arrow-down" size={20} color={colors.textSecondary} />
 									</View>
-									<Icon name="keyboard-arrow-down" size={20} color={colors.textSecondary} />
-								</Pressable>
+								</DatePickerField>
 							</Animated.View>
 
 							<Animated.View entering={FadeInDown.duration(400).delay(200)} style={styles.sectionMargin}>
@@ -444,27 +419,6 @@ export function OnboardingScreen3({ navigation }: Props) {
 				schools={schools}
 				onAddSchool={(s) => setSchools(prev => [s, ...prev])}
 			/>
-			<Modal transparent visible={showCustomDob} animationType="fade" onRequestClose={() => setShowCustomDob(false)}>
-				<Pressable style={styles.modalOverlay} onPress={() => setShowCustomDob(false)} />
-				<View style={styles.datePickerContainer}>
-					<View style={styles.datePickerContent}>
-						<DateTimePicker
-							mode="single"
-							date={dobIso}
-							onChange={(params: any) => {
-								if (params.date) {
-									setDobIso(dayjs(params.date).toISOString());
-									setShowCustomDob(false);
-									Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-								}
-							}}
-							maxDate={new Date()}
-						// selected={backgroundColor: colors.primary}
-						// headerButtonColor={colors.primary}
-						/>
-					</View>
-				</View>
-			</Modal>
 		</SafeAreaView>
 	);
 }
@@ -571,21 +525,6 @@ const styles = StyleSheet.create({
 	ctaTextDisabled: { color: colors.textMuted },
 
 	modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
-
-	datePickerContainer: {
-		...StyleSheet.absoluteFillObject,
-		justifyContent: 'center',
-		alignItems: 'center',
-		paddingHorizontal: spacing.xl,
-		pointerEvents: 'box-none',
-	},
-	datePickerContent: {
-		backgroundColor: colors.surface,
-		borderRadius: borderRadius.xxl,
-		padding: spacing.lg,
-		width: '100%',
-		...shadows.large,
-	},
 
 	gradeSheet: {
 		position: 'absolute', bottom: 0, left: 0, right: 0,
