@@ -702,7 +702,7 @@ const SessionsScreen: React.FC = () => {
                         .springify()
                         .damping(18)
                         .stiffness(220)}
-                      style={[isExpanded ? styles.hiddenCard : undefined, { marginBottom: spacing.md }]}
+                      style={[styles.shadowWrapper, isExpanded ? styles.hiddenCard : undefined, { marginBottom: spacing.md }]}
                     >
                       <View
                         ref={(node) => { cardRefs.current[session.id] = node; }}
@@ -824,21 +824,30 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.99 }],
   },
 
-  /* Session card */
-  sessionCard: {
-    marginVertical: 0,
-    overflow: 'hidden',
+  shadowWrapper: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
     borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    marginVertical: spacing.sm,
+    // padding: spacing.md,
     ...Platform.select({
       ios: {
         shadowColor: colors.ink,
         shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.05,
-        shadowRadius: 10,
+        shadowOpacity: 0.07,
+        shadowRadius: 8,
       },
       android: { elevation: 2 },
       default: {},
     }),
+  },
+
+  /* Session card */
+  sessionCard: {
+    marginVertical: 0,
+    overflow: 'hidden'
   },
 
   imageWrap: {

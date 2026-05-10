@@ -45,7 +45,7 @@ const ProgressTrendsChart: React.FC<ProgressTrendsChartProps> = ({
 	/* Derive series for the current view:
 	   - Weekly  → the daily data points as provided (Mon-Sun)
 	   - Monthly → 4 week-wise points (W1-W4) synthesised from the same data
-	     so the latest week (W4) matches the current week's average.        */
+		 so the latest week (W4) matches the current week's average.        */
 	const series = useMemo<DualTrendRow[]>(() => {
 		if (period === 'weekly') return data;
 		if (data.length === 0) return [];
@@ -91,6 +91,7 @@ const ProgressTrendsChart: React.FC<ProgressTrendsChartProps> = ({
 	return (
 		<Animated.View
 			entering={FadeInDown.delay(320).springify().damping(18).stiffness(220)}
+			style={[s.shadowWrapper, { marginBottom: spacing.sm }]}
 		>
 			<Card variant="elevated" padding={spacing.md} style={s.trendCard}>
 				<View style={s.trendHeader}>
@@ -111,43 +112,43 @@ const ProgressTrendsChart: React.FC<ProgressTrendsChartProps> = ({
 						<Text style={s.trendScorePillValue}>{latest?.bsi ?? 0}</Text>
 					</View> */}
 					{/* Period toggle */}
-				<View style={s.trendToggle}>
-					<Pressable
-						onPress={() => setPeriod('weekly')}
-						style={[
-							s.trendToggleBtn,
-							period === 'weekly' && s.trendToggleBtnActive,
-						]}
-					>
-						<Text
+					<View style={s.trendToggle}>
+						<Pressable
+							onPress={() => setPeriod('weekly')}
 							style={[
-								s.trendToggleText,
-								period === 'weekly' && s.trendToggleTextActive,
+								s.trendToggleBtn,
+								period === 'weekly' && s.trendToggleBtnActive,
 							]}
 						>
-							Weekly
-						</Text>
-					</Pressable>
-					<Pressable
-						onPress={() => setPeriod('monthly')}
-						style={[
-							s.trendToggleBtn,
-							period === 'monthly' && s.trendToggleBtnActive,
-						]}
-					>
-						<Text
+							<Text
+								style={[
+									s.trendToggleText,
+									period === 'weekly' && s.trendToggleTextActive,
+								]}
+							>
+								Weekly
+							</Text>
+						</Pressable>
+						<Pressable
+							onPress={() => setPeriod('monthly')}
 							style={[
-								s.trendToggleText,
-								period === 'monthly' && s.trendToggleTextActive,
+								s.trendToggleBtn,
+								period === 'monthly' && s.trendToggleBtnActive,
 							]}
 						>
-							Monthly
-						</Text>
-					</Pressable>
-				</View>
+							<Text
+								style={[
+									s.trendToggleText,
+									period === 'monthly' && s.trendToggleTextActive,
+								]}
+							>
+								Monthly
+							</Text>
+						</Pressable>
+					</View>
 				</View>
 
-				
+
 
 				<LinearGradient
 					colors={['rgba(124,106,232,0.08)', 'rgba(182,215,251,0.08)']}
@@ -269,8 +270,27 @@ export default React.memo(ProgressTrendsChart);
 /*  Styles                                                            */
 /* ═══════════════════════════════════════════════════════════════════ */
 const s = StyleSheet.create({
+	shadowWrapper: {
+		backgroundColor: colors.surface,
+		borderRadius: borderRadius.xl,
+		borderWidth: StyleSheet.hairlineWidth,
+		borderColor: colors.border,
+		overflow: 'hidden',
+		marginVertical: spacing.sm,
+		// padding: spacing.md,
+		...Platform.select({
+			ios: {
+				shadowColor: colors.ink,
+				shadowOffset: { width: 0, height: 3 },
+				shadowOpacity: 0.07,
+				shadowRadius: 8,
+			},
+			android: { elevation: 2 },
+			default: {},
+		}),
+	},
 	trendCard: {
-		marginBottom: spacing.md,
+		// marginBottom: spacing.md,
 		backgroundColor: 'rgba(255,255,255,0.96)',
 		borderWidth: StyleSheet.hairlineWidth,
 		borderColor: 'rgba(17,17,17,0.05)',

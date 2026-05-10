@@ -179,53 +179,60 @@ const AnnouncementsScreen: React.FC = () => {
           >
             <View style={styles.sectionWrap}>
               <Text style={styles.sectionLabel}>{section.label}</Text>
+              <Animated.View
+                entering={FadeInDown.delay(sectionIndex * 70)
+                  .springify()
+                  .damping(18)
+                  .stiffness(220)}
+                style={styles.shadowWrapper}
+              >
+                <Card variant="elevated" style={styles.sectionCard}>
+                  {section.items.map((item, index) => (
+                    <View
+                      key={item.id}
+                      style={[
+                        styles.announcementRow,
+                        index < section.items.length - 1 ? styles.announcementRowBorder : null,
+                      ]}
+                    >
+                      <View style={styles.dateRail}>
+                        <LinearDatePill day={item.day} month={item.month} />
+                        <Text style={styles.timeText}>{item.time}</Text>
+                      </View>
 
-              <Card variant="elevated" style={styles.sectionCard}>
-                {section.items.map((item, index) => (
-                  <View
-                    key={item.id}
-                    style={[
-                      styles.announcementRow,
-                      index < section.items.length - 1 ? styles.announcementRowBorder : null,
-                    ]}
-                  >
-                    <View style={styles.dateRail}>
-                      <LinearDatePill day={item.day} month={item.month} />
-                      <Text style={styles.timeText}>{item.time}</Text>
+                      <View style={styles.contentColumn}>
+                        <Text style={styles.announcementTitle}>{item.title}</Text>
+                        <Text style={styles.announcementSummary}>{item.summary}</Text>
+
+                        {item.attachmentColors?.length ? (
+                          <View style={styles.mediaStrip}>
+                            {item.attachmentColors.map((color, mediaIndex) => (
+                              <View
+                                key={`${item.id}-media-${mediaIndex}`}
+                                style={[
+                                  styles.mediaThumb,
+                                  styles.mediaThumbStacked,
+                                  mediaIndex === 0 ? styles.mediaThumbFirst : null,
+                                  { backgroundColor: color },
+                                ]}
+                              >
+                                <Icon name="image" size={14} color={colors.surface} />
+                              </View>
+                            ))}
+                          </View>
+                        ) : null}
+
+                        {item.audience ? (
+                          <View style={styles.audienceRow}>
+                            <Icon name="person-outline" size={14} color={colors.textMuted} />
+                            <Text style={styles.audienceText}>{item.audience}</Text>
+                          </View>
+                        ) : null}
+                      </View>
                     </View>
-
-                    <View style={styles.contentColumn}>
-                      <Text style={styles.announcementTitle}>{item.title}</Text>
-                      <Text style={styles.announcementSummary}>{item.summary}</Text>
-
-                      {item.attachmentColors?.length ? (
-                        <View style={styles.mediaStrip}>
-                          {item.attachmentColors.map((color, mediaIndex) => (
-                            <View
-                              key={`${item.id}-media-${mediaIndex}`}
-                              style={[
-                                styles.mediaThumb,
-                                styles.mediaThumbStacked,
-                                mediaIndex === 0 ? styles.mediaThumbFirst : null,
-                                { backgroundColor: color },
-                              ]}
-                            >
-                              <Icon name="image" size={14} color={colors.surface} />
-                            </View>
-                          ))}
-                        </View>
-                      ) : null}
-
-                      {item.audience ? (
-                        <View style={styles.audienceRow}>
-                          <Icon name="person-outline" size={14} color={colors.textMuted} />
-                          <Text style={styles.audienceText}>{item.audience}</Text>
-                        </View>
-                      ) : null}
-                    </View>
-                  </View>
-                ))}
-              </Card>
+                  ))}
+                </Card>
+              </Animated.View>
             </View>
           </Animated.View>
         ))}
@@ -337,6 +344,26 @@ const styles = StyleSheet.create({
   sectionWrap: {
     marginBottom: spacing.md,
   },
+  shadowWrapper: {
+    marginHorizontal: spacing.lg,
+    borderRadius: borderRadius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    // marginVertical: spacing.sm,
+    backgroundColor: colors.surface,
+    // padding: spacing.md,
+    ...Platform.select({
+      ios: {
+        shadowColor: colors.ink,
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.07,
+        shadowRadius: 8,
+      },
+      android: { elevation: 2 },
+      default: {},
+    }),
+  },
   sectionLabel: {
     ...textStyles.caption,
     color: colors.textSecondary,
@@ -347,8 +374,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   sectionCard: {
-    marginHorizontal: spacing.lg,
-    backgroundColor: colors.surface,
+    backgroundColor: 'transparent'
   },
   announcementRow: {
     flexDirection: 'row',

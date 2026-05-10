@@ -37,6 +37,7 @@ const SummaryStats: React.FC<SummaryStatsProps> = ({
 	return (
 		<Animated.View
 			entering={FadeInDown.delay(400).springify().damping(18).stiffness(220)}
+			style={[s.shadowWrapper, { marginBottom: spacing.sm }]}
 		>
 			<View style={s.summaryWrap}>
 				<View style={s.headerRow}>
@@ -81,7 +82,7 @@ const SummaryStats: React.FC<SummaryStatsProps> = ({
 						</Pressable>
 					</View>
 				</View>
-				
+
 				<View style={s.statPillsRow}>
 					{STAT_PILLS.map((pill) => (
 						<View key={pill.key} style={s.statPill}>
@@ -104,24 +105,33 @@ export default React.memo(SummaryStats);
 /*  Styles                                                            */
 /* ═══════════════════════════════════════════════════════════════════ */
 const s = StyleSheet.create({
+	shadowWrapper: {
+		backgroundColor: colors.surface,
+		borderRadius: borderRadius.xl,
+		borderWidth: StyleSheet.hairlineWidth,
+		borderColor: colors.border,
+		overflow: 'hidden',
+		marginVertical: spacing.sm,
+		// padding: spacing.md,
+		...Platform.select({
+			ios: {
+				shadowColor: colors.ink,
+				shadowOffset: { width: 0, height: 3 },
+				shadowOpacity: 0.07,
+				shadowRadius: 8,
+			},
+			android: { elevation: 2 },
+			default: {},
+		}),
+	},
 	summaryWrap: {
-		marginBottom: spacing.md,
+		// marginBottom: spacing.md,
 		padding: spacing.md,
 		backgroundColor: colors.surface,
 		borderRadius: borderRadius.xl,
 		overflow: 'hidden',
 		borderWidth: StyleSheet.hairlineWidth,
 		borderColor: 'rgba(17,17,17,0.06)',
-		...Platform.select({
-			ios: {
-				shadowColor: colors.ink,
-				shadowOffset: { width: 0, height: 6 },
-				shadowOpacity: 0.07,
-				shadowRadius: 18,
-			},
-			android: { elevation: 4 },
-			default: {},
-		}),
 	},
 	summaryTitle: {
 		...textStyles.headingMedium,

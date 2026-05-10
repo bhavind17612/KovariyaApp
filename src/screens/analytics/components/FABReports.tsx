@@ -230,17 +230,6 @@ const s = StyleSheet.create({
 	},
 	actionShell: {
 		width: 232,
-	},
-	actionButton: {
-		minHeight: 52,
-		borderRadius: borderRadius.full,
-		borderWidth: StyleSheet.hairlineWidth,
-		paddingLeft: spacing.md,
-		paddingRight: spacing.md,
-		flexDirection: 'row',
-		alignItems: 'center',
-		justifyContent: 'center',
-		gap: spacing.sm,
 		...Platform.select({
 			ios: {
 				shadowColor: colors.ink,
@@ -253,6 +242,19 @@ const s = StyleSheet.create({
 			},
 			default: {},
 		}),
+		borderRadius: borderRadius.full,
+		borderWidth: StyleSheet.hairlineWidth,
+		overflow: 'hidden',
+		borderColor: colors.border
+	},
+	actionButton: {
+		minHeight: 52,
+		paddingLeft: spacing.md,
+		paddingRight: spacing.md,
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: spacing.sm,
 	},
 	actionButtonPressed: {
 		opacity: 0.92,

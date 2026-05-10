@@ -15,22 +15,23 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { AppGradientHeader, Button, Card } from '../components';
 import { borderRadius, colors, spacing, textStyles } from '../theme';
 import type { Quiz } from '../types';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 
 type QuizQuestion =
   | {
-      id: string;
-      prompt: string;
-      type: 'single';
-      options: string[];
-      correctAnswer: number;
-    }
+    id: string;
+    prompt: string;
+    type: 'single';
+    options: string[];
+    correctAnswer: number;
+  }
   | {
-      id: string;
-      prompt: string;
-      type: 'text';
-      placeholder: string;
-      correctAnswer: string[];
-    };
+    id: string;
+    prompt: string;
+    type: 'text';
+    placeholder: string;
+    correctAnswer: string[];
+  };
 
 type QuizSet = Quiz & {
   dueDateLabel: string;
@@ -326,11 +327,11 @@ const QuizzesScreen: React.FC = () => {
       prev.map((quiz) =>
         quiz.id === activeQuiz.id
           ? {
-              ...quiz,
-              completed: true,
-              score,
-              time: `${activeQuiz.estimatedMinutes ?? activeQuiz.questionsList.length}m`,
-            }
+            ...quiz,
+            completed: true,
+            score,
+            time: `${activeQuiz.estimatedMinutes ?? activeQuiz.questionsList.length}m`,
+          }
           : quiz
       )
     );
@@ -534,85 +535,101 @@ const QuizzesScreen: React.FC = () => {
         contentContainerStyle={styles.listScrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <Card variant="elevated" style={styles.summaryCard}>
-          <View style={styles.summaryColumn}>
-            <Text style={styles.summaryValue}>{quizStats.total}</Text>
-            <Text style={styles.summaryLabel}>Quiz Sets</Text>
-          </View>
-          <View style={styles.summaryDivider} />
-          <View style={styles.summaryColumn}>
-            <Text style={[styles.summaryValue, { color: colors.growth }]}>{quizStats.completed}</Text>
-            <Text style={styles.summaryLabel}>Complete</Text>
-          </View>
-          <View style={styles.summaryDivider} />
-          <View style={styles.summaryColumn}>
-            <Text style={[styles.summaryValue, { color: colors.accent }]}>{quizStats.pending}</Text>
-            <Text style={styles.summaryLabel}>Pending</Text>
-          </View>
-        </Card>
+        <Animated.View
+          entering={FadeInDown.delay(0 * 75)
+            .springify()
+            .damping(18)
+            .stiffness(220)}
+          style={styles.shadowWrapper}
+        >
+          <Card variant="elevated" style={styles.summaryCard}>
+            <View style={styles.summaryColumn}>
+              <Text style={styles.summaryValue}>{quizStats.total}</Text>
+              <Text style={styles.summaryLabel}>Quiz Sets</Text>
+            </View>
+            <View style={styles.summaryDivider} />
+            <View style={styles.summaryColumn}>
+              <Text style={[styles.summaryValue, { color: colors.growth }]}>{quizStats.completed}</Text>
+              <Text style={styles.summaryLabel}>Complete</Text>
+            </View>
+            <View style={styles.summaryDivider} />
+            <View style={styles.summaryColumn}>
+              <Text style={[styles.summaryValue, { color: colors.accent }]}>{quizStats.pending}</Text>
+              <Text style={styles.summaryLabel}>Pending</Text>
+            </View>
+          </Card>
+        </Animated.View>
 
-        {quizzes.map((quiz) => {
+        {quizzes.map((quiz, quizIndex) => {
           const status = statusMeta(quiz);
           const isExpired = Boolean(quiz.isExpired);
 
           return (
-            <Card
+            <Animated.View
               key={quiz.id}
-              variant="elevated"
-              style={[styles.quizCard, isExpired && styles.quizCardExpired]}
+              entering={FadeInDown.delay(quizIndex * 75)
+                .springify()
+                .damping(18)
+                .stiffness(220)}
+              style={[styles.shadowWrapper, { marginBottom: spacing.md }]}
             >
-              <View style={styles.quizCardTop}>
-                <View style={styles.quizCardTitleWrap}>
-                  <Text style={[styles.quizTitle, isExpired && styles.quizTitleExpired]}>{quiz.title}</Text>
-                  <Text style={[styles.quizSummary, isExpired && styles.quizSummaryExpired]}>
-                    {quiz.summary}
-                  </Text>
+              <Card
+                variant="elevated"
+                style={[styles.quizCard, isExpired && styles.quizCardExpired]}
+              >
+                <View style={styles.quizCardTop}>
+                  <View style={styles.quizCardTitleWrap}>
+                    <Text style={[styles.quizTitle, isExpired && styles.quizTitleExpired]}>{quiz.title}</Text>
+                    <Text style={[styles.quizSummary, isExpired && styles.quizSummaryExpired]}>
+                      {quiz.summary}
+                    </Text>
+                  </View>
+                  <View style={[styles.statusPill, { backgroundColor: status.backgroundColor }]}>
+                    <Icon name={status.icon} size={14} color={status.textColor} />
+                    <Text style={[styles.statusText, { color: status.textColor }]}>{status.label}</Text>
+                  </View>
                 </View>
-                <View style={[styles.statusPill, { backgroundColor: status.backgroundColor }]}>
-                  <Icon name={status.icon} size={14} color={status.textColor} />
-                  <Text style={[styles.statusText, { color: status.textColor }]}>{status.label}</Text>
-                </View>
-              </View>
 
-              <View style={styles.metaWrap}>
-                <View style={[styles.metaChip, isExpired && styles.metaChipExpired]}>
-                  <Icon
-                    name="help-outline"
-                    size={16}
-                    color={isExpired ? colors.textMuted : colors.primary}
-                  />
-                  <Text style={[styles.metaChipText, isExpired && styles.metaChipTextExpired]}>
-                    {quiz.questions} questions
-                  </Text>
+                <View style={styles.metaWrap}>
+                  <View style={[styles.metaChip, isExpired && styles.metaChipExpired]}>
+                    <Icon
+                      name="help-outline"
+                      size={16}
+                      color={isExpired ? colors.textMuted : colors.primary}
+                    />
+                    <Text style={[styles.metaChipText, isExpired && styles.metaChipTextExpired]}>
+                      {quiz.questions} questions
+                    </Text>
+                  </View>
+                  <View style={[styles.metaChip, isExpired && styles.metaChipExpired]}>
+                    <Icon
+                      name="event"
+                      size={16}
+                      color={isExpired ? colors.textMuted : colors.primary}
+                    />
+                    <Text style={[styles.metaChipText, isExpired && styles.metaChipTextExpired]}>
+                      {quiz.dueDateLabel}
+                    </Text>
+                  </View>
                 </View>
-                <View style={[styles.metaChip, isExpired && styles.metaChipExpired]}>
-                  <Icon
-                    name="event"
-                    size={16}
-                    color={isExpired ? colors.textMuted : colors.primary}
-                  />
-                  <Text style={[styles.metaChipText, isExpired && styles.metaChipTextExpired]}>
-                    {quiz.dueDateLabel}
-                  </Text>
-                </View>
-              </View>
 
-              {quiz.completed ? (
-                <View style={styles.completedStrip}>
-                  <Text style={styles.completedStripText}>
-                    Score {quiz.score ?? 0}%{quiz.time ? ` • ${quiz.time}` : ''}
-                  </Text>
-                </View>
-              ) : null}
+                {quiz.completed ? (
+                  <View style={styles.completedStrip}>
+                    <Text style={styles.completedStripText}>
+                      Score {quiz.score ?? 0}%{quiz.time ? ` • ${quiz.time}` : ''}
+                    </Text>
+                  </View>
+                ) : null}
 
-              <Button
-                title={isExpired ? 'Expired' : quiz.completed ? 'Start Again' : 'Start Quiz'}
-                onPress={() => openQuiz(quiz.id)}
-                variant={isExpired ? 'ghost' : quiz.completed ? 'outline' : 'primary'}
-                size="large"
-                disabled={isExpired}
-              />
-            </Card>
+                <Button
+                  title={isExpired ? 'Expired' : quiz.completed ? 'Start Again' : 'Start Quiz'}
+                  onPress={() => openQuiz(quiz.id)}
+                  variant={isExpired ? 'ghost' : quiz.completed ? 'outline' : 'primary'}
+                  size="large"
+                  disabled={isExpired}
+                />
+              </Card>
+            </Animated.View>
           );
         })}
       </ScrollView>
@@ -954,6 +971,25 @@ const styles = StyleSheet.create({
     ...textStyles.bodyMedium,
     color: colors.textSecondary,
     flex: 1,
+  },
+  shadowWrapper: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    marginVertical: spacing.sm,
+    // padding: spacing.md,
+    ...Platform.select({
+      ios: {
+        shadowColor: colors.ink,
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.07,
+        shadowRadius: 8,
+      },
+      android: { elevation: 2 },
+      default: {},
+    }),
   },
 });
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -61,6 +61,7 @@ const InsightsSection: React.FC<InsightsSectionProps> = ({
 			{/* 7a. AI Insights / Guidance */}
 			<Animated.View
 				entering={FadeInDown.delay(480).springify().damping(18).stiffness(220)}
+				style={[s.shadowWrapper, { marginBottom: spacing.sm }]}
 			>
 				<Card variant="elevated" padding={spacing.md} style={s.insightCard}>
 					<View style={shared.insightHeader}>
@@ -114,6 +115,7 @@ const InsightsSection: React.FC<InsightsSectionProps> = ({
 			{/* 7b. Strengths & Growth Areas */}
 			<Animated.View
 				entering={FadeInDown.delay(560).springify().damping(18).stiffness(220)}
+				style={[s.shadowWrapper, { marginBottom: spacing.sm }]}
 			>
 				<Card variant="elevated" padding={spacing.md} style={s.insightCard}>
 					<View style={shared.insightHeader}>
@@ -190,6 +192,7 @@ const InsightsSection: React.FC<InsightsSectionProps> = ({
 			{/* 7c. Badges & Achievements */}
 			<Animated.View
 				entering={FadeInDown.delay(640).springify().damping(18).stiffness(220)}
+				style={[s.shadowWrapper, { marginBottom: spacing.sm }]}
 			>
 				<Card variant="elevated" padding={spacing.md} style={s.badgesCard}>
 					<View style={shared.insightHeader}>
@@ -265,8 +268,27 @@ export default React.memo(InsightsSection);
 /*  Styles                                                            */
 /* ═══════════════════════════════════════════════════════════════════ */
 const s = StyleSheet.create({
+	shadowWrapper: {
+		backgroundColor: colors.surface,
+		borderRadius: borderRadius.xl,
+		borderWidth: StyleSheet.hairlineWidth,
+		borderColor: colors.border,
+		overflow: 'hidden',
+		marginVertical: spacing.sm,
+		// padding: spacing.md,
+		...Platform.select({
+			ios: {
+				shadowColor: colors.ink,
+				shadowOffset: { width: 0, height: 3 },
+				shadowOpacity: 0.07,
+				shadowRadius: 8,
+			},
+			android: { elevation: 2 },
+			default: {},
+		}),
+	},
 	insightCard: {
-		marginBottom: spacing.sm,
+		// marginBottom: spacing.sm,
 		backgroundColor: 'rgba(255,255,255,0.96)',
 		borderWidth: StyleSheet.hairlineWidth,
 		borderColor: 'rgba(17,17,17,0.05)',

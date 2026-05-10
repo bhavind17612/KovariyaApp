@@ -51,7 +51,7 @@ const SupportGauges: React.FC<SupportGaugesProps> = ({
 			trendIcon: trust.trend > 0 ? 'favorite' : trust.trend < 0 ? 'heart-broken' : 'favorite-border',
 			trendText: trust.trend === 0 ? '0%' : trust.trend > 0 ? `+${trust.trend}%` : `${trust.trend}%`,
 			trendColor: trust.trend >= 0 ? colors.growth : colors.error,
-			labelColor: scoreColor(trust.level),
+			labelColor: undefined,
 			accentColor: colors.accent,
 			icon: 'favorite',
 		},
@@ -72,6 +72,7 @@ const SupportGauges: React.FC<SupportGaugesProps> = ({
 	return (
 		<Animated.View
 			entering={FadeInDown.delay(80).springify().damping(18).stiffness(220)}
+			style={[s.shadowWrapper, { marginBottom: spacing.sm }]}
 		>
 			<View style={s.kpiRow}>
 				{gauges.map((g, idx) => (
@@ -109,7 +110,7 @@ const SupportGauges: React.FC<SupportGaugesProps> = ({
 					</View>
 				))}
 			</View>
-		</Animated.View>
+		</Animated.View >
 	);
 };
 
@@ -119,24 +120,32 @@ export default React.memo(SupportGauges);
 /*  Styles                                                            */
 /* ═══════════════════════════════════════════════════════════════════ */
 const s = StyleSheet.create({
+	shadowWrapper: {
+		backgroundColor: colors.surface,
+		borderRadius: borderRadius.xl,
+		borderWidth: StyleSheet.hairlineWidth,
+		borderColor: colors.border,
+		overflow: 'hidden',
+		marginVertical: spacing.sm,
+		// padding: spacing.md,
+		...Platform.select({
+			ios: {
+				shadowColor: colors.ink,
+				shadowOffset: { width: 0, height: 3 },
+				shadowOpacity: 0.07,
+				shadowRadius: 8,
+			},
+			android: { elevation: 2 },
+			default: {},
+		}),
+	},
 	kpiRow: {
 		flexDirection: 'row',
-		marginBottom: spacing.md,
 		backgroundColor: colors.surface,
 		borderRadius: borderRadius.xl,
 		overflow: 'hidden',
 		borderWidth: StyleSheet.hairlineWidth,
 		borderColor: 'rgba(17,17,17,0.06)',
-		...Platform.select({
-			ios: {
-				shadowColor: colors.ink,
-				shadowOffset: { width: 0, height: 6 },
-				shadowOpacity: 0.07,
-				shadowRadius: 18,
-			},
-			android: { elevation: 4 },
-			default: {},
-		}),
 	},
 	kpiCard: {
 		flex: 1,

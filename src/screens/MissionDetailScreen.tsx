@@ -1,5 +1,18 @@
-import React, { useCallback, useMemo } from 'react';
-import { Platform, ScrollView, StatusBar as RNStatusBar, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import {
+  Alert,
+  Image,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StatusBar as RNStatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -93,6 +106,53 @@ export default function MissionDetailScreen({ route }: Props) {
     () => getFloatingTabBarBottomPadding(insets.bottom),
     [insets.bottom]
   );
+
+  // ── Upload Proof ──────────────────────────────────────────────
+  const [proofUris, setProofUris] = useState<string[]>([]);
+  const [pickerSheetVisible, setPickerSheetVisible] = useState(false);
+
+  const requestAndLaunchCamera = useCallback(async () => {
+    setPickerSheetVisible(false);
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Camera access needed', 'Please allow camera access in your device settings.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      quality: 0.85,
+      allowsEditing: true,
+      aspect: [4, 3],
+    });
+    if (!result.canceled && result.assets.length > 0) {
+      setProofUris((prev) => [...prev, result.assets[0].uri]);
+    }
+  }, []);
+
+  const requestAndLaunchLibrary = useCallback(async () => {
+    setPickerSheetVisible(false);
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Photos access needed', 'Please allow photo library access in your device settings.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.85,
+      allowsMultipleSelection: true,
+      selectionLimit: 6,
+    });
+    if (!result.canceled && result.assets.length > 0) {
+      setProofUris((prev) => [...prev, ...result.assets.map((a) => a.uri)]);
+    }
+  }, []);
+
+  const removeProof = useCallback((uri: string) => {
+    Alert.alert('Remove photo?', undefined, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => setProofUris((prev) => prev.filter((u) => u !== uri)) },
+    ]);
+  }, []);
 
   const headerSubtitle = `${formatMissionTypeLabel(mission.missionType)} · ${formatLifecycleStatusLabel(lifecycle)}`;
 
@@ -228,53 +288,232 @@ export default function MissionDetailScreen({ route }: Props) {
             </View>
           </View>
 
-          <View style={styles.groupedSheet}>
+          <View style={styles.logList}>
             {sortedHistory.map((entry, idx) => {
               const isDone = entry.status === 'done';
               const isLast = idx === sortedHistory.length - 1;
+              const dateObj = new Date(entry.date);
+              const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+              const dayNum = dateObj.getDate();
+              const monthName = dateObj.toLocaleDateString('en-US', { month: 'short' });
               return (
                 <View
                   key={`${mission.id}-history-${entry.date}-${idx}`}
-                  style={[styles.sheetRow, !isLast && styles.sheetRowDivider]}
+                  style={[styles.logRow, !isLast && styles.logRowDivider]}
                 >
+                  {/* Left accent bar */}
                   <View
                     style={[
-                      styles.sheetStatusOrb,
+                      styles.logAccentBar,
                       { backgroundColor: isDone ? colors.growth : colors.error },
                     ]}
+                  />
+
+                  {/* Date badge */}
+                  <View
+                    style={[
+                      styles.logDateBadge,
+                      {
+                        backgroundColor: isDone
+                          ? 'rgba(63, 169, 122, 0.08)'
+                          : 'rgba(235, 87, 87, 0.07)',
+                      },
+                    ]}
                   >
-                    <Icon
-                      name={isDone ? 'check' : 'close'}
-                      size={16}
-                      color={colors.surface}
-                    />
+                    <Text
+                      style={[
+                        styles.logDayName,
+                        { color: isDone ? colors.growth : colors.error },
+                      ]}
+                    >
+                      {dayName}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.logDayNum,
+                        { color: isDone ? colors.growth : colors.error },
+                      ]}
+                    >
+                      {dayNum}
+                    </Text>
+                    <Text style={styles.logMonthName}>{monthName}</Text>
                   </View>
-                  <View style={styles.sheetMain}>
-                    <Text style={styles.sheetDate}>{formatAppDate(entry.date)}</Text>
-                    <View style={styles.sheetMetaRow}>
+
+                  {/* Content */}
+                  <View style={styles.logContent}>
+                    <View style={styles.logTopRow}>
                       <View
                         style={[
-                          styles.sheetMiniPill,
-                          { backgroundColor: isDone ? colors.mintSoft : '#FFE8E8' },
+                          styles.logStatusChip,
+                          {
+                            backgroundColor: isDone
+                              ? 'rgba(63, 169, 122, 0.12)'
+                              : 'rgba(235, 87, 87, 0.09)',
+                          },
                         ]}
                       >
+                        <View
+                          style={[
+                            styles.logStatusDot,
+                            { backgroundColor: isDone ? colors.growth : colors.error },
+                          ]}
+                        />
                         <Text
                           style={[
-                            styles.sheetMiniPillText,
+                            styles.logStatusLabel,
                             { color: isDone ? colors.growth : colors.error },
                           ]}
                         >
-                          {isDone ? 'Done' : 'Missed'}
+                          {isDone ? 'Completed' : 'Missed'}
                         </Text>
                       </View>
                     </View>
-                    {entry.note ? <Text style={styles.sheetNote}>{entry.note}</Text> : null}
+                    {entry.note ? (
+                      <Text style={styles.logNote} numberOfLines={2}>
+                        {entry.note}
+                      </Text>
+                    ) : (
+                      <Text style={styles.logNoNote}>
+                        {isDone ? 'Check-in recorded' : 'No activity logged'}
+                      </Text>
+                    )}
+                  </View>
+
+                  {/* Right icon */}
+                  <View
+                    style={[
+                      styles.logIconBadge,
+                      {
+                        backgroundColor: isDone
+                          ? 'rgba(63, 169, 122, 0.12)'
+                          : 'rgba(235, 87, 87, 0.09)',
+                      },
+                    ]}
+                  >
+                    <Icon
+                      name={isDone ? 'check-circle' : 'cancel'}
+                      size={20}
+                      color={isDone ? colors.growth : colors.error}
+                    />
                   </View>
                 </View>
               );
             })}
           </View>
         </Card>
+        {/* ── Upload Proof Card ────────────────────────────────── */}
+        <Card variant="elevated" padding={0} style={styles.proofCard}>
+          <View style={styles.proofHeader}>
+            <View style={styles.sectionIconOrb}>
+              <Icon name="photo-camera" size={20} color={colors.primaryDark} />
+            </View>
+            <View style={styles.proofHeaderText}>
+              <Text style={styles.sectionTitle}>Upload Proof</Text>
+              <Text style={styles.sectionHint} numberOfLines={1}>
+                Attach photos to verify completion
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.proofAddBtn}
+              activeOpacity={0.75}
+              onPress={() => setPickerSheetVisible(true)}
+            >
+              <Icon name="add" size={20} color={colors.surface} />
+              <Text style={styles.proofAddBtnText}>Add</Text>
+            </TouchableOpacity>
+          </View>
+
+          {proofUris.length > 0 ? (
+            <View style={styles.proofGrid}>
+              {proofUris.map((uri) => (
+                <Pressable
+                  key={uri}
+                  style={styles.proofThumbWrap}
+                  onLongPress={() => removeProof(uri)}
+                  android_ripple={{ color: 'rgba(0,0,0,0.1)', borderless: false }}
+                >
+                  <Image source={{ uri }} style={styles.proofThumb} resizeMode="cover" />
+                  <TouchableOpacity
+                    style={styles.proofRemoveBtn}
+                    onPress={() => removeProof(uri)}
+                    hitSlop={8}
+                  >
+                    <Icon name="close" size={12} color={colors.surface} />
+                  </TouchableOpacity>
+                </Pressable>
+              ))}
+              {proofUris.length < 6 && (
+                <TouchableOpacity
+                  style={styles.proofAddTile}
+                  activeOpacity={0.7}
+                  onPress={() => setPickerSheetVisible(true)}
+                >
+                  <Icon name="add-photo-alternate" size={28} color={colors.primaryDark} />
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.proofEmptyState}
+              activeOpacity={0.7}
+              onPress={() => setPickerSheetVisible(true)}
+            >
+              <Icon name="add-photo-alternate" size={36} color={colors.primaryDark} />
+              <Text style={styles.proofEmptyTitle}>No photos yet</Text>
+              <Text style={styles.proofEmptyHint}>Tap to add proof of completion</Text>
+            </TouchableOpacity>
+          )}
+        </Card>
+
+        {/* ── Picker Action Sheet ──────────────────────────────── */}
+        <Modal
+          visible={pickerSheetVisible}
+          transparent
+          animationType="slide"
+          statusBarTranslucent
+          onRequestClose={() => setPickerSheetVisible(false)}
+        >
+          <Pressable style={styles.sheetOverlay} onPress={() => setPickerSheetVisible(false)}>
+            <Pressable style={[styles.sheetContainer, { paddingBottom: insets.bottom + spacing.md }]}>
+              <View style={styles.sheetHandle} />
+              <Text style={styles.sheetTitle}>Add Proof Photo</Text>
+              <Text style={styles.sheetSubtitle}>Choose how you'd like to add your photo</Text>
+
+              <TouchableOpacity style={styles.sheetOption} activeOpacity={0.75} onPress={requestAndLaunchCamera}>
+                <View style={[styles.sheetOptionIcon, { backgroundColor: colors.lavenderSoft }]}>
+                  <Icon name="photo-camera" size={24} color={colors.primaryDark} />
+                </View>
+                <View style={styles.sheetOptionText}>
+                  <Text style={styles.sheetOptionTitle}>Take a photo</Text>
+                  <Text style={styles.sheetOptionHint}>Use your camera right now</Text>
+                </View>
+                <Icon name="chevron-right" size={20} color={colors.textMuted} />
+              </TouchableOpacity>
+
+              <View style={styles.sheetDivider} />
+
+              <TouchableOpacity style={styles.sheetOption} activeOpacity={0.75} onPress={requestAndLaunchLibrary}>
+                <View style={[styles.sheetOptionIcon, { backgroundColor: colors.mintSoft }]}>
+                  <Icon name="photo-library" size={24} color={colors.growth} />
+                </View>
+                <View style={styles.sheetOptionText}>
+                  <Text style={styles.sheetOptionTitle}>Choose from library</Text>
+                  <Text style={styles.sheetOptionHint}>Select up to 6 photos</Text>
+                </View>
+                <Icon name="chevron-right" size={20} color={colors.textMuted} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.sheetCancelBtn}
+                activeOpacity={0.75}
+                onPress={() => setPickerSheetVisible(false)}
+              >
+                <Text style={styles.sheetCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
       </ScrollView>
     </SafeAreaView>
   );
@@ -552,64 +791,293 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.primaryDark,
   },
-  groupedSheet: {
+  // ── Modern Daily Log ────────────────────────────────────────
+  logList: {
     marginHorizontal: spacing.md,
     marginBottom: spacing.md,
     borderRadius: borderRadius.large,
-    backgroundColor: colors.surface,
+    overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
+  },
+  logRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm + 2,
+    paddingRight: spacing.sm,
+    backgroundColor: colors.surface,
     overflow: 'hidden',
   },
-  sheetRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    backgroundColor: colors.surfaceMuted,
-  },
-  sheetRowDivider: {
+  logRowDivider: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  sheetStatusOrb: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  logAccentBar: {
+    width: 3,
+    alignSelf: 'stretch',
+    borderRadius: 2,
+    minHeight: 52,
+  },
+  logDateBadge: {
+    width: 46,
+    borderRadius: borderRadius.medium,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 2,
+    paddingVertical: 6,
+    marginLeft: 2,
+    flexShrink: 0,
   },
-  sheetMain: {
+  logDayName: {
+    fontFamily: typography.fontFamily.primary,
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 1,
+  },
+  logDayNum: {
+    fontFamily: typography.fontFamily.primary,
+    fontSize: 20,
+    fontWeight: '800',
+    lineHeight: 24,
+  },
+  logMonthName: {
+    fontFamily: typography.fontFamily.primary,
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginTop: 1,
+  },
+  logContent: {
     flex: 1,
     minWidth: 0,
+    gap: 4,
   },
-  sheetDate: {
-    ...textStyles.bodyMedium,
-    fontWeight: '700',
-    color: colors.ink,
-  },
-  sheetMetaRow: {
+  logTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
   },
-  sheetMiniPill: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: spacing.sm,
+  logStatusChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: borderRadius.full,
+    alignSelf: 'flex-start',
   },
-  sheetMiniPillText: {
+  logStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  logStatusLabel: {
     fontFamily: typography.fontFamily.primary,
     fontSize: 11,
     fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  logNote: {
+    ...textStyles.caption,
+    color: colors.textSecondary,
+    lineHeight: 17,
+    fontWeight: '500',
+  },
+  logNoNote: {
+    ...textStyles.caption,
+    color: colors.textMuted,
+    fontWeight: '500',
+    fontStyle: 'italic',
+  },
+  logIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   sheetNote: {
     ...textStyles.caption,
     color: colors.textSecondary,
     marginTop: 6,
     lineHeight: 18,
+  },
+
+  // ── Upload Proof ────────────────────────────────────────────
+  proofCard: {
+    marginVertical: spacing.xs,
+    overflow: 'hidden',
+  },
+  proofHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  proofHeaderText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  proofAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.full,
+    paddingVertical: 7,
+    paddingHorizontal: spacing.sm,
+  },
+  proofAddBtnText: {
+    fontFamily: typography.fontFamily.primary,
+    fontSize: typography.fontSize.xs,
+    fontWeight: '800',
+    color: colors.surface,
+  },
+  proofEmptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xl,
+    gap: spacing.xs,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: borderRadius.large,
+    borderWidth: 1.5,
+    borderColor: 'rgba(124, 106, 232, 0.2)',
+    borderStyle: 'dashed',
+    backgroundColor: colors.lavenderSoft,
+  },
+  proofEmptyTitle: {
+    ...textStyles.bodyMedium,
+    fontWeight: '700',
+    color: colors.primaryDark,
+  },
+  proofEmptyHint: {
+    ...textStyles.caption,
+    color: colors.textMuted,
+    fontWeight: '600',
+  },
+  proofGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+  },
+  proofThumbWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: borderRadius.large,
+    overflow: 'hidden',
+  },
+  proofThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  proofRemoveBtn: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  proofAddTile: {
+    width: 88,
+    height: 88,
+    borderRadius: borderRadius.large,
+    backgroundColor: colors.lavenderSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(124, 106, 232, 0.25)',
+    borderStyle: 'dashed',
+  },
+
+  // ── Action Sheet ────────────────────────────────────────────
+  sheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  sheetContainer: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+    alignSelf: 'center',
+    marginBottom: spacing.md,
+  },
+  sheetTitle: {
+    ...textStyles.headingMedium,
+    fontWeight: '800',
+    color: colors.ink,
+    marginBottom: 4,
+  },
+  sheetSubtitle: {
+    ...textStyles.caption,
+    color: colors.textMuted,
+    fontWeight: '600',
+    marginBottom: spacing.md,
+  },
+  sheetOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  sheetOptionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetOptionText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  sheetOptionTitle: {
+    ...textStyles.bodyMedium,
+    fontWeight: '700',
+    color: colors.ink,
+  },
+  sheetOptionHint: {
+    ...textStyles.caption,
+    color: colors.textMuted,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  sheetDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+    marginVertical: spacing.xs,
+  },
+  sheetCancelBtn: {
+    marginTop: spacing.md,
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.large,
+    backgroundColor: colors.surfaceMuted,
+  },
+  sheetCancelText: {
+    ...textStyles.bodyMedium,
+    fontWeight: '700',
+    color: colors.textSecondary,
   },
 });

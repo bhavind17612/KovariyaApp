@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   StyleSheet,
   Pressable,
+  Alert,
 } from 'react-native';
 import Animated, {
   Easing,
@@ -16,9 +17,10 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { colors, spacing, borderRadius, textStyles } from '../theme';
+import { colors, spacing, borderRadius, textStyles, shadows } from '../theme';
 
 interface ButtonProps {
+  androidRipple?: any;
   title: string;
   onPress: () => void;
   variant?: 'primary' | 'secondary' | 'outline' | 'ghost';
@@ -26,12 +28,14 @@ interface ButtonProps {
   disabled?: boolean;
   loading?: boolean;
   style?: ViewStyle;
+  btnStyle?: ViewStyle;
   textStyle?: TextStyle;
   icon?: React.ReactNode;
   hapticOnPress?: boolean;
 }
 
 export const Button = React.memo(function Button({
+  androidRipple,
   title,
   onPress,
   variant = 'primary',
@@ -39,6 +43,7 @@ export const Button = React.memo(function Button({
   disabled = false,
   loading = false,
   style,
+  btnStyle,
   textStyle,
   icon,
   hapticOnPress = true,
@@ -73,11 +78,11 @@ export const Button = React.memo(function Button({
       alignItems: 'center',
       justifyContent: 'center',
       flexDirection: 'row',
+      overflow: 'hidden',
     };
 
     const sizeStyle = getSizeStyle();
     const variantStyle = getVariantStyle();
-
     return { ...baseStyle, ...sizeStyle, ...variantStyle };
   };
 
@@ -105,32 +110,40 @@ export const Button = React.memo(function Button({
   };
 
   const getVariantStyle = (): ViewStyle => {
-    if (disabled && !loading) {
-      return {
-        backgroundColor: colors.surfaceMuted,
-      };
-    }
-
+    // Build the base variant style first (so borders/etc are preserved)
+    let variantStyle: ViewStyle;
     switch (variant) {
       case 'secondary':
-        return {
-          backgroundColor: colors.mintSoft,
-        };
+        variantStyle = { backgroundColor: colors.mintSoft };
+        break;
       case 'outline':
-        return {
-          backgroundColor: 'transparent',
+        variantStyle = {
+          backgroundColor: colors.surface,
           borderWidth: 1.5,
           borderColor: colors.primary,
         };
+        break;
       case 'ghost':
-        return {
-          backgroundColor: 'transparent',
-        };
+        variantStyle = { backgroundColor: 'transparent' };
+        break;
       default:
-        return {
-          backgroundColor: colors.primary,
-        };
+        variantStyle = { backgroundColor: colors.primary };
+        break;
     }
+
+    // When disabled, overlay only the background; keep borders/radius intact
+    if (disabled && !loading) {
+      return {
+        ...variantStyle,
+        backgroundColor: colors.surfaceMuted,
+        // For outline/ghost, also dim the border so it reads as disabled
+        ...(variant === 'outline' || variant === 'ghost'
+          ? { borderColor: colors.surfaceMuted }
+          : {}),
+      };
+    }
+
+    return variantStyle;
   };
 
   const getTextStyle = (): TextStyle => {
@@ -142,7 +155,7 @@ export const Button = React.memo(function Button({
     if (disabled && !loading) {
       return {
         ...baseStyle,
-        color: colors.textMuted,
+        color: colors.textMuted
       };
     }
 
@@ -198,12 +211,13 @@ export const Button = React.memo(function Button({
   }));
 
   return (
-    <Animated.View style={[styles.button, shellAnim]}>
+    <Animated.View style={[styles.button, shellAnim, style]}>
       <Pressable
+        android_ripple={androidRipple}
         style={({ pressed }) => [
           getButtonStyle(),
-          style,
-          pressed && !disabled && !loading ? styles.pressed : null,
+          btnStyle,
+          !disabled && !loading && pressed ? styles.pressed : null,
         ]}
         onPress={handlePress}
         disabled={disabled || loading}
@@ -233,6 +247,13 @@ export const Button = React.memo(function Button({
 const styles = StyleSheet.create({
   button: {
     marginVertical: spacing.xs,
+    borderRadius: borderRadius.large,
+    // Shadow lives here (outside overflow:hidden) so it renders on Android
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
   },
   pressed: {
     opacity: 0.92,

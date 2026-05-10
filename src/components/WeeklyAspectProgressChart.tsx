@@ -245,9 +245,8 @@ export const WeeklyAspectProgressChart = React.memo(function WeeklyAspectProgres
                 <Pressable
                   key={`hit-${aspect.id}-${i}`}
                   accessibilityRole="button"
-                  accessibilityLabel={`${aspect.name}, ${WEEKLY_PROGRESS_DAYS[i].label}, ${
-                    vals[i]
-                  } percent`}
+                  accessibilityLabel={`${aspect.name}, ${WEEKLY_PROGRESS_DAYS[i].label}, ${vals[i]
+                    } percent`}
                   onPress={() => onPointPress(aspect.id, i)}
                   style={[
                     styles.hit,
@@ -315,8 +314,8 @@ export const WeeklyAspectProgressChart = React.memo(function WeeklyAspectProgres
 
 const styles = StyleSheet.create({
   card: {
-    marginHorizontal: spacing.lg,
-    marginVertical: spacing.xs,
+    // marginHorizontal: spacing.lg,
+    // marginVertical: spacing.xs,
   },
   cardHeader: {
     flexDirection: 'row',

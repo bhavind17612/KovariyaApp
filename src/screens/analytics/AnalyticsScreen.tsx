@@ -37,6 +37,7 @@ import {
 	SummaryStats,
 	InsightsSection,
 	FABReports,
+	DayLogsSheet,
 } from './components';
 
 /* ═══════════════════════════════════════════════════════════════════ */
@@ -46,6 +47,14 @@ const AnalyticsScreen: React.FC = () => {
 	const insets = useSafeAreaInsets();
 	const { showToast } = useToast();
 	const [activeReport, setActiveReport] = React.useState<'monthly' | 'goalwise' | null>(null);
+	const [selectedDay, setSelectedDay] = React.useState<{
+		date: string;
+		score: number | null;
+	} | null>(null);
+
+	const handleDayPress = useCallback((date: string, score: number | null) => {
+		setSelectedDay({ date, score });
+	}, []);
 
 	const scrollBottomPad = useMemo(
 		() => getFloatingTabBarBottomPadding(insets.bottom),
@@ -167,6 +176,7 @@ const AnalyticsScreen: React.FC = () => {
 					month={heatmapMonth}
 					onPrevMonth={prevMonth}
 					onNextMonth={nextMonth}
+					onDayPress={handleDayPress}
 				/>
 
 				{/* Section divider */}
@@ -210,6 +220,14 @@ const AnalyticsScreen: React.FC = () => {
 				monthlyReport={monthlyReport}
 				goalReport={goalWiseReport}
 				onClose={closeReport}
+			/>
+
+			<DayLogsSheet
+				visible={selectedDay !== null}
+				childId={selectedChild.id}
+				date={selectedDay?.date ?? null}
+				dbsScore={selectedDay?.score ?? null}
+				onClose={() => setSelectedDay(null)}
 			/>
 		</SafeAreaView>
 	);

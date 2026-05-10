@@ -124,8 +124,9 @@ const TutorialsScreen: React.FC = () => {
             <Animated.View
               key={video.id}
               entering={FadeInDown.delay(index * 70).springify().damping(18).stiffness(220)}
+              style={styles.videoCard}
             >
-              <Card variant="elevated" style={styles.videoCard}>
+              <Card variant="elevated">
                 <Pressable
                   onPress={() => {
                     openTutorial(video.url).catch((error) => {
@@ -291,6 +292,24 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
     marginBottom: spacing.md,
     backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    // marginVertical: spacing.sm,
+    // backgroundColor: colors.surface,
+    // padding: spacing.md,
+    ...Platform.select({
+      ios: {
+        shadowColor: colors.ink,
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.07,
+        shadowRadius: 8,
+      },
+      android: { elevation: 2 },
+      default: {},
+    }),
+
   },
   videoStage: {
     marginBottom: spacing.md,

@@ -52,9 +52,11 @@ const BSIGaugeCard: React.FC<BSIGaugeCardProps> = ({
 	);
 
 	return (
-		<Animated.View entering={FadeInDown.springify().damping(18).stiffness(220)}>
+		<Animated.View
+			entering={FadeInDown.springify().damping(18).stiffness(220)}
+			style={[s.shadowWrapper, { marginBottom: spacing.sm }]}>
 			<View style={s.heroSection}>
-			<LinearGradient
+				<LinearGradient
 					colors={cardGradient}
 					start={{ x: 0, y: 0 }}
 					end={{ x: 1, y: 1 }}
@@ -192,27 +194,36 @@ export default React.memo(BSIGaugeCard);
 /*  Styles                                                            */
 /* ═══════════════════════════════════════════════════════════════════ */
 const s = StyleSheet.create({
+	shadowWrapper: {
+		backgroundColor: colors.surface,
+		borderRadius: borderRadius.xl,
+		borderWidth: StyleSheet.hairlineWidth,
+		borderColor: colors.border,
+		overflow: 'hidden',
+		marginVertical: spacing.sm,
+		// padding: spacing.md,
+		...Platform.select({
+			ios: {
+				shadowColor: colors.ink,
+				shadowOffset: { width: 0, height: 3 },
+				shadowOpacity: 0.07,
+				shadowRadius: 8,
+			},
+			android: { elevation: 2 },
+			default: {},
+		}),
+	},
 	heroSection: {
-		marginBottom: spacing.sm,
+		// marginBottom: spacing.sm,
 	},
 	bsiCard: {
-		borderRadius: borderRadius.xxl,
+		// borderRadius: borderRadius.xxl,
 		padding: spacing.md,
 		overflow: 'hidden',
 		borderWidth: StyleSheet.hairlineWidth,
 		borderColor: 'rgba(124,106,232,0.12)',
 		backgroundColor: '#fff',
-		...Platform.select({
-			ios: {
-				shadowColor: colors.primary,
-				shadowOffset: { width: 0, height: 10 },
-				shadowOpacity: 0.08,
-				shadowRadius: 28,
-			},
-			android: { elevation: 4 },
-			default: {},
-		}),
-		marginVertical: spacing.sm,
+		// marginVertical: spacing.sm,
 	},
 	bsiHeaderRow: {
 		flexDirection: 'row',

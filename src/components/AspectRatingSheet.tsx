@@ -8,8 +8,10 @@ import {
   ScrollView,
   TextInput,
   Platform,
+  Keyboard,
   KeyboardAvoidingView,
   useWindowDimensions,
+  Animated,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,6 +32,13 @@ import {
   type AspectRatingPayload,
 } from '../data/aspectRating';
 import { useToast } from '../context/ToastContext';
+import {
+  type SupportedLanguage,
+  getUIStrings,
+  getAspectName,
+  getScaleLabel,
+  getReasonChipLabel,
+} from '../data/aspectRatingI18n';
 
 const NEXT_STEP_TOOLTIP_MS = 4000;
 const NEXT_STEP_POPOVER_ESTIMATE_H = 48;
@@ -47,6 +56,8 @@ type Props = {
   /** When provided with a following aspect in `orderedAspects`, enables seamless handoff after save. */
   onSaveAndNext?: (payload: AspectRatingPayload) => void;
   onVoiceNotePress?: () => void;
+  /** Language to display the sheet in. Defaults to English. */
+  language?: SupportedLanguage;
 };
 
 export const AspectRatingSheet = React.memo(function AspectRatingSheet({
@@ -57,9 +68,10 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
   orderedAspects,
   onSaveAndNext,
   onVoiceNotePress,
+  language = 'en',
 }: Props) {
   const insets = useSafeAreaInsets();
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const { showToast } = useToast();
   const scaleBtnWidth = useMemo(() => {
     const sheetPad = spacing.lg * 2;
@@ -68,15 +80,19 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
     // 2 columns × 3 rows for the six rating scale options.
     return Math.max(140, Math.floor((inner - gap) / 2));
   }, [windowWidth]);
+  const t = useMemo(() => getUIStrings(language), [language]);
   const [scale, setScale] = useState<number | null>(null);
   const [reasonIds, setReasonIds] = useState<string[]>([]);
   const [note, setNote] = useState('');
+  const [hasVoiceNote, setHasVoiceNote] = useState(false);
+  const scrollRef = useRef<ScrollView | null>(null);
 
   useEffect(() => {
     if (visible && aspect) {
       setScale(null);
       setReasonIds([]);
       setNote('');
+      setHasVoiceNote(false);
     }
   }, [visible, aspect?.id]);
 
@@ -89,7 +105,7 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
         if (prev.length >= MAX_REASON_CHIPS) {
           showToast({
             type: 'error',
-            message: 'You can pick up to two reasons — remove one to choose another.',
+            message: t.toastMaxReasons,
             durationMs: 3200,
           });
           return prev;
@@ -104,7 +120,20 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
     setScale(null);
     setReasonIds([]);
     setNote('');
+    setHasVoiceNote(false);
   }, []);
+  const isFinalAspect = useMemo(() => {
+    if (!aspect || !orderedAspects?.length) {
+      return false;
+    }
+    const i = orderedAspects.findIndex((a) => a.id === aspect.id);
+    return i >= 0 && i === orderedAspects.length - 1;
+  }, [aspect, orderedAspects]);
+
+  const isFirstAspect = useMemo(() => {
+    if (!aspect || !orderedAspects?.length) return false;
+    return orderedAspects[0]?.id === aspect.id;
+  }, [aspect, orderedAspects]);
 
   const buildPayload = useCallback((): AspectRatingPayload | null => {
     if (!aspect || scale === null) {
@@ -119,23 +148,32 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
   }, [aspect, scale, reasonIds, note]);
 
   const handleSaveEntry = useCallback(() => {
+    Keyboard.dismiss();
     const payload = buildPayload();
     if (!payload) {
       return;
     }
     onSave(payload);
+    if (isFinalAspect) {
+      onClose();
+      return;
+    }
     resetForm();
-  }, [buildPayload, onSave, resetForm]);
+  }, [buildPayload, isFinalAspect, onClose, onSave, resetForm]);
 
   const handleSaveAndNext = useCallback(() => {
+    Keyboard.dismiss();
     const payload = buildPayload();
     if (!payload || !onSaveAndNext) {
       return;
     }
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
     onSaveAndNext(payload);
   }, [buildPayload, onSaveAndNext]);
 
-  const canSave = aspect != null && scale !== null;
+  const isReasonChipsValid = reasonIds.length <= MAX_REASON_CHIPS;
+  const hasSupportInput = reasonIds.length > 0 || note.trim().length > 0 || hasVoiceNote;
+  const canSave = aspect != null && scale !== null && hasSupportInput && isReasonChipsValid;
 
   const aspectStepLabel = useMemo(() => {
     if (!aspect || !orderedAspects?.length) {
@@ -145,8 +183,8 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
     if (i < 0) {
       return null;
     }
-    return `Step ${i + 1} of ${orderedAspects.length}`;
-  }, [aspect, orderedAspects]);
+    return t.stepLabel(i + 1, orderedAspects.length);
+  }, [aspect, orderedAspects, t]);
 
   const nextAspect = useMemo(() => {
     if (!aspect || !orderedAspects?.length) {
@@ -160,6 +198,37 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
   }, [aspect, orderedAspects]);
 
   const showSaveAndNext = Boolean(nextAspect && onSaveAndNext);
+
+  // ── Button guide tooltip (first aspect only) ────────────────────────────
+  const btnGuideOpacity = useRef(new Animated.Value(0)).current;
+  const btnGuideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showBtnGuide, setShowBtnGuide] = useState(false);
+
+  useEffect(() => {
+    if (btnGuideTimerRef.current) {
+      clearTimeout(btnGuideTimerRef.current);
+      btnGuideTimerRef.current = null;
+    }
+    if (!visible || !isFirstAspect || !showSaveAndNext) {
+      btnGuideOpacity.setValue(0);
+      setShowBtnGuide(false);
+      return;
+    }
+    setShowBtnGuide(true);
+    Animated.timing(btnGuideOpacity, { toValue: 1, duration: 350, useNativeDriver: true }).start();
+    btnGuideTimerRef.current = setTimeout(() => {
+      Animated.timing(btnGuideOpacity, { toValue: 0, duration: 700, useNativeDriver: true }).start(() => {
+        setShowBtnGuide(false);
+      });
+      btnGuideTimerRef.current = null;
+    }, 5000);
+    return () => {
+      if (btnGuideTimerRef.current) {
+        clearTimeout(btnGuideTimerRef.current);
+        btnGuideTimerRef.current = null;
+      }
+    };
+  }, [visible, isFirstAspect, showSaveAndNext]);
 
   const prevAspectIdForTooltipRef = useRef<string | null>(null);
   const tooltipHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -235,293 +304,272 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
   }, [nextStepTooltipLabel, showSaveAndNext, measureNextStepPopover, aspect?.id]);
 
   const title = useMemo(
-    () => (aspect ? `${aspect.name} · How was behaviour today?` : ''),
-    [aspect]
+    () => (aspect ? `${getAspectName(aspect.id, language)} · ${t.howWasBehaviour}` : ''),
+    [aspect, language, t]
   );
 
   if (!aspect) {
     return null;
   }
 
-  const showNextStepPopoverModal = Boolean(
-    nextStepTooltipLabel && nextStepPopoverPos && showSaveAndNext
-  );
-
   return (
     <>
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.root}>
-        <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Dismiss" />
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
-          style={styles.kb}
-        >
-        <View
-          style={[
-            styles.sheet,
-            {
-              paddingBottom: Math.max(insets.bottom, spacing.lg),
-              maxHeight: '92%',
-            },
-          ]}
-        >
-          <View style={styles.grabber} />
-          <View style={styles.sheetTitleRow}>
-            <Text style={styles.sheetTitle} numberOfLines={2}>
-              {title}
-            </Text>
-            <Pressable
-              onPress={onClose}
-              style={({ pressed }) => [
-                styles.closeButton,
-                pressed && styles.closeButtonPressed,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Close"
-              hitSlop={8}
-              android_ripple={{ color: 'rgba(0,0,0,0.06)', borderless: true }}
-            >
-              <Icon name="close" size={22} color={colors.ink} />
-            </Pressable>
-          </View>
-          {aspectStepLabel ? (
-            <Text style={styles.sheetStep}>{aspectStepLabel}</Text>
-          ) : null}
-          <Text style={styles.sheetHint}>
-            Select a rating. scroll down to add reasons. You can log this multiple times today.
-          </Text>
+      <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <View style={styles.root}>
+          <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Dismiss" />
 
-          <ScrollView
-            style={styles.scroll}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-            nestedScrollEnabled
+          <View
+            style={[
+              styles.sheet,
+              {
+                height: windowHeight - insets.top,
+                // maxHeight: '1%',
+              },
+            ]}
           >
-            <Text style={styles.blockLabel}>Rating</Text>
-            <Text style={styles.ratingHint}>Tap a score to choose points</Text>
-            <View style={styles.scaleGrid}>
-              {RATING_SCALE_OPTIONS.map((opt) => {
-                const selected = scale === opt.value;
-                const neg = opt.tier === 'negative';
-                const ripple = neg
-                  ? { color: 'rgba(220, 38, 38, 0.18)', borderless: false }
-                  : { color: 'rgba(22, 163, 74, 0.18)', borderless: false };
-                return (
-                  <Pressable
-                    key={opt.value}
-                    onPress={() => setScale(opt.value)}
-                    android_ripple={ripple}
-                    style={({ pressed }) => [
-                      styles.scaleBtn,
-                      { width: scaleBtnWidth },
-                      neg ? styles.scaleBtnNegBase : styles.scaleBtnPosBase,
-                      selected && (neg ? styles.scaleBtnNegSelected : styles.scaleBtnPosSelected),
-                      pressed && styles.scaleBtnPressed,
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={`${opt.label}, ${opt.value >= 0 ? '+' : ''}${opt.value} points`}
-                  >
-                    <View style={styles.scaleBtnTextCol}>
-                      <Text
-                        style={[
-                          styles.scaleBtnLabel,
-                          neg ? styles.scaleBtnLabelNeg : styles.scaleBtnLabelPos,
+            <View style={styles.grabber} />
+            <View style={styles.sheetTitleRow}>
+              <Text style={styles.sheetTitle} numberOfLines={2}>
+                {title}
+              </Text>
+              <Pressable
+                onPress={onClose}
+                style={({ pressed }) => [
+                  styles.closeButton,
+                  pressed && styles.closeButtonPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+                hitSlop={8}
+                android_ripple={{ color: 'rgba(0,0,0,0.06)', borderless: true }}
+              >
+                <Icon name="close" size={22} color={colors.ink} />
+              </Pressable>
+            </View>
+            {aspectStepLabel ? (
+              <Text style={styles.sheetStep}>{aspectStepLabel}</Text>
+            ) : null}
+            <Text style={styles.sheetHint}>{t.sheetHint}</Text>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 100}
+            // style={styles.kb}
+            >
+              <ScrollView
+                ref={scrollRef}
+                style={[styles.scroll, { maxHeight: windowHeight - insets.top - 270 }]}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="interactive"
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
+              // contentContainerStyle={{ paddingBottom: 100 }}
+              >
+                <Text style={styles.blockLabel}>{t.sectionRating}</Text>
+                <Text style={styles.ratingHint}>{t.ratingHint}</Text>
+                <View style={styles.scaleGrid}>
+                  {RATING_SCALE_OPTIONS.map((opt) => {
+                    const selected = scale === opt.value;
+                    const neg = opt.tier === 'negative';
+                    const ripple = neg
+                      ? { color: 'rgba(220, 38, 38, 0.18)', borderless: false }
+                      : { color: 'rgba(22, 163, 74, 0.18)', borderless: false };
+                    return (
+                      <Pressable
+                        key={opt.value}
+                        onPress={() => setScale(opt.value)}
+                        android_ripple={ripple}
+                        style={({ pressed }) => [
+                          styles.scaleBtn,
+                          { width: scaleBtnWidth },
+                          neg ? styles.scaleBtnNegBase : styles.scaleBtnPosBase,
+                          selected && (neg ? styles.scaleBtnNegSelected : styles.scaleBtnPosSelected),
+                          pressed && styles.scaleBtnPressed,
                         ]}
-                        numberOfLines={2}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        accessibilityLabel={`${getScaleLabel(opt.value, language)}, ${opt.value >= 0 ? '+' : ''}${opt.value} points`}
                       >
-                        {opt.label}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.scalePoints,
-                          neg ? styles.scalePointsNeg : styles.scalePointsPos,
-                        ]}
-                      >
-                        {opt.value >= 0 ? `+${opt.value}` : `${opt.value}`} pts
-                      </Text>
-                    </View>
-                    {/* {selected ? (
+                        <View style={styles.scaleBtnTextCol}>
+                          <Text
+                            style={[
+                              styles.scaleBtnLabel,
+                              neg ? styles.scaleBtnLabelNeg : styles.scaleBtnLabelPos,
+                            ]}
+                            numberOfLines={2}
+                          >
+                            {getScaleLabel(opt.value, language)}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.scalePoints,
+                              neg ? styles.scalePointsNeg : styles.scalePointsPos,
+                            ]}
+                          >
+                            {opt.value >= 0 ? `+${opt.value}` : `${opt.value}`} pts
+                          </Text>
+                        </View>
+                        {/* {selected ? (
                       <Icon name="check-circle" size={22} color={neg ? '#B91C1C' : '#15803D'} />
                     ) : (
                       <Icon name="touch-app" size={20} color={neg ? 'rgba(153, 27, 27, 0.45)' : 'rgba(22, 101, 52, 0.45)'} />
                     )} */}
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <Text style={styles.blockLabel}>
-              Reasons <Text style={styles.reasonCount}>({reasonIds.length}/{MAX_REASON_CHIPS})</Text>
-            </Text>
-            <Text style={styles.reasonHint}>Positive</Text>
-            <View style={styles.chipWrap}>
-              {REASON_CHIPS_POSITIVE.map((c) => {
-                const on = reasonIds.includes(c.id);
-                return (
-                  <Pressable
-                    key={c.id}
-                    onPress={() => toggleReason(c.id)}
-                    android_ripple={{ color: 'rgba(22, 163, 74, 0.14)', borderless: false }}
-                    style={({ pressed }) => [
-                      styles.chip,
-                      styles.chipPos,
-                      on && styles.chipPosOn,
-                      pressed && styles.chipPressed,
-                    ]}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: on }}
-                  >
-                    <Text style={[styles.chipText, on && styles.chipTextOn]} numberOfLines={1}>
-                      {c.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <Text style={styles.reasonHint}>Needs work</Text>
-            <View style={styles.chipWrap}>
-              {REASON_CHIPS_NEGATIVE.map((c) => {
-                const on = reasonIds.includes(c.id);
-                return (
-                  <Pressable
-                    key={c.id}
-                    onPress={() => toggleReason(c.id)}
-                    android_ripple={{ color: 'rgba(220, 38, 38, 0.14)', borderless: false }}
-                    style={({ pressed }) => [
-                      styles.chip,
-                      styles.chipNeg,
-                      on && styles.chipNegOn,
-                      pressed && styles.chipPressed,
-                    ]}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: on }}
-                  >
-                    <Text style={[styles.chipTextNeg, on && styles.chipTextNegOn]} numberOfLines={1}>
-                      {c.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <Text style={styles.blockLabel}>Add note (optional)</Text>
-            <TextInput
-              style={styles.noteInput}
-              placeholder="Other reason or extra notes."
-              placeholderTextColor={colors.textMuted}
-              value={note}
-              onChangeText={setNote}
-              multiline
-              maxLength={500}
-              textAlignVertical="top"
-            />
-
-            {onVoiceNotePress ? (
-              <Pressable
-                style={styles.voiceRow}
-                onPress={onVoiceNotePress}
-                accessibilityRole="button"
-                accessibilityLabel="Record voice note"
-              >
-                <Icon name="mic" size={22} color={colors.primary} />
-                <Text style={styles.voiceText}>Record voice note (optional)</Text>
-                <Icon name="chevron-right" size={22} color={colors.textMuted} />
-              </Pressable>
-            ) : null}
-          </ScrollView>
-
-          <View style={styles.saveFooter}>
-            {showSaveAndNext && nextAspect ? (
-              <View style={styles.saveFooterRow}>
-                <View style={styles.saveFooterHalf}>
-                  <Button
-                    title="Save"
-                    variant="primary"
-                    size="small"
-                    onPress={handleSaveEntry}
-                    disabled={!canSave}
-                    style={styles.footerPrimaryBtn}
-                  />
+                      </Pressable>
+                    );
+                  })}
                 </View>
-                <View style={styles.saveFooterHalf}>
-                  <View
-                    ref={saveNextAnchorRef}
-                    collapsable={false}
-                    style={styles.saveNextAnchor}
-                    onLayout={() => {
-                      if (nextStepTooltipLabel) {
-                        measureNextStepPopover();
-                      }
+
+                <Text style={styles.blockLabel}>
+                  {t.sectionReasons} <Text style={styles.reasonCount}>({reasonIds.length}/{MAX_REASON_CHIPS})</Text>
+                </Text>
+                <Text style={styles.reasonHint}>{t.reasonHintPositive}</Text>
+                <View style={styles.chipWrap}>
+                  {REASON_CHIPS_POSITIVE.map((c) => {
+                    const on = reasonIds.includes(c.id);
+                    return (
+                      <Pressable
+                        key={c.id}
+                        onPress={() => toggleReason(c.id)}
+                        android_ripple={{ color: 'rgba(22, 163, 74, 0.14)', borderless: false }}
+                        style={({ pressed }) => [
+                          styles.chip,
+                          styles.chipPos,
+                          on && styles.chipPosOn,
+                          pressed && styles.chipPressed,
+                        ]}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: on }}
+                      >
+                        <Text style={[styles.chipText, on && styles.chipTextOn]} numberOfLines={1}>
+                          {getReasonChipLabel(c.id, language)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                <Text style={styles.reasonHint}>{t.reasonHintNeeds}</Text>
+                <View style={styles.chipWrap}>
+                  {REASON_CHIPS_NEGATIVE.map((c) => {
+                    const on = reasonIds.includes(c.id);
+                    return (
+                      <Pressable
+                        key={c.id}
+                        onPress={() => toggleReason(c.id)}
+                        android_ripple={{ color: 'rgba(220, 38, 38, 0.14)', borderless: false }}
+                        style={({ pressed }) => [
+                          styles.chip,
+                          styles.chipNeg,
+                          on && styles.chipNegOn,
+                          pressed && styles.chipPressed,
+                        ]}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: on }}
+                      >
+                        <Text style={[styles.chipTextNeg, on && styles.chipTextNegOn]} numberOfLines={1}>
+                          {getReasonChipLabel(c.id, language)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                <Text style={styles.blockLabel}>{t.sectionNote}</Text>
+                <TextInput
+                  style={styles.noteInput}
+                  placeholder={t.notePlaceholder}
+                  placeholderTextColor={colors.textMuted}
+                  value={note}
+                  onChangeText={setNote}
+                  multiline
+                  maxLength={500}
+                  textAlignVertical="top"
+                  onFocus={() => {
+                    setTimeout(() => {
+                      scrollRef.current?.scrollToEnd({ animated: true });
+                    }, 100);
+                  }}
+                />
+
+                {onVoiceNotePress ? (
+                  <Pressable
+                    style={styles.voiceRow}
+                    onPress={() => {
+                      setHasVoiceNote(true);
+                      onVoiceNotePress();
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Record voice note"
                   >
+                    <Icon name="mic" size={22} color={colors.primary} />
+                    <Text style={styles.voiceText}>
+                      {hasVoiceNote ? t.voiceNoteAttached : t.voiceNoteRecord}
+                    </Text>
+                    <Icon name="chevron-right" size={22} color={colors.textMuted} />
+                  </Pressable>
+                ) : null}
+              </ScrollView>
+            </KeyboardAvoidingView>
+            <View style={styles.saveFooter}>
+              {showBtnGuide && showSaveAndNext && (
+                <Animated.View
+                  style={[styles.btnGuideRow, { opacity: btnGuideOpacity }]}
+                  pointerEvents="none"
+                >
+                  <View style={styles.btnGuideHalf}>
+                    <View style={styles.btnGuideBubble}>
+                      <Text style={styles.btnGuideText}>📝 Logs entry, stays here for another</Text>
+                    </View>
+                    <View style={styles.btnGuideCaret} />
+                  </View>
+                  <View style={styles.btnGuideHalf}>
+                    <View style={styles.btnGuideBubble}>
+                      <Text style={styles.btnGuideText}>⚡ Saves & moves to next aspect</Text>
+                    </View>
+                    <View style={styles.btnGuideCaret} />
+                  </View>
+                </Animated.View>
+              )}
+              {showSaveAndNext && nextAspect ? (
+                <View style={styles.saveFooterRow}>
+                  <View style={styles.saveFooterHalf}>
                     <Button
-                      title="Save & Next"
+                      androidRipple={{ color: 'rgba(255, 255, 255, 0.6)', foreground: true }}
+                      title={t.save}
+                      variant="primary"
+                      size="small"
+                      onPress={handleSaveEntry}
+                      disabled={!canSave}
+                      style={styles.footerPrimaryBtn}
+                    />
+                  </View>
+                  <View style={styles.saveFooterHalf}>
+
+                    <Button
+                      androidRipple={{ color: 'rgba(124, 106, 232, 0.6)', foreground: true }}
+                      title={t.saveAndNext}
                       variant="outline"
                       size="small"
                       onPress={handleSaveAndNext}
                       disabled={!canSave}
                       style={styles.footerSecondaryBtn}
                     />
+
                   </View>
                 </View>
-              </View>
-            ) : (
-              <Button
-                title="Save entry"
-                variant="primary"
-                size="small"
-                onPress={handleSaveEntry}
-                disabled={!canSave}
-                style={styles.footerPrimaryBtnFull}
-              />
-            )}
+              ) : (
+                <Button
+                  title={t.saveEntry}
+                  variant="primary"
+                  size="small"
+                  onPress={handleSaveEntry}
+                  disabled={!canSave}
+                  style={styles.footerPrimaryBtnFull}
+                />
+              )}
+            </View>
           </View>
         </View>
-        </KeyboardAvoidingView>
-      </View>
-    </Modal>
-
-    <Modal
-      visible={showNextStepPopoverModal}
-      transparent
-      animationType="fade"
-      presentationStyle="overFullScreen"
-      statusBarTranslucent
-      onRequestClose={() => {
-        setNextStepTooltipLabel(null);
-        setNextStepPopoverPos(null);
-        if (tooltipHideTimerRef.current) {
-          clearTimeout(tooltipHideTimerRef.current);
-          tooltipHideTimerRef.current = null;
-        }
-      }}
-    >
-      <View style={styles.nextStepPopoverModalRoot} pointerEvents="box-none">
-        {nextStepTooltipLabel && nextStepPopoverPos ? (
-          <View
-            style={[
-              styles.nextStepPopoverModal,
-              {
-                top: nextStepPopoverPos.top,
-                left: nextStepPopoverPos.left,
-                width: nextStepPopoverPos.width,
-              },
-            ]}
-            accessibilityRole="text"
-            accessibilityLiveRegion="polite"
-            accessibilityLabel={`Next step: ${nextStepTooltipLabel}`}
-          >
-            <Text style={styles.nextStepPopoverText}>
-              Next:{' '}
-              <Text style={styles.nextStepPopoverName}>{nextStepTooltipLabel}</Text>
-            </Text>
-          </View>
-        ) : null}
-      </View>
-    </Modal>
+      </Modal>
     </>
   );
 });
@@ -532,9 +580,11 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   kb: {
-    flex: 1,
+    // flex: 1,
     width: '100%',
-    justifyContent: 'flex-end',
+    // justifyContent: 'flex-end',
+    // bottom: 100,
+    backgroundColor: 'green'
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -546,6 +596,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: borderRadius.xl,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
+    // marginBottom: 100,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
   },
@@ -602,7 +653,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   scroll: {
-    maxHeight: 440,
+    // maxHeight: 440,
   },
   blockLabel: {
     ...textStyles.caption,
@@ -785,16 +836,22 @@ const styles = StyleSheet.create({
     color: colors.primaryDark,
   },
   saveFooter: {
-    marginTop: spacing.sm,
-    paddingTop: spacing.md,
+    // flex: 1,
+    width: '100%',
+    alignContent: 'center',
+    justifyContent: 'center',
+    // marginVertical: spacing.sm,
+    paddingVertical: spacing.sm,
+    // paddingBottom: spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
+    backgroundColor: colors.surface,
   },
   saveNextAnchor: {
     alignSelf: 'stretch',
   },
-  nextStepPopoverModalRoot: {
-    flex: 1,
+  nextStepPopoverOverlay: {
+    ...StyleSheet.absoluteFillObject,
   },
   nextStepPopoverModal: {
     position: 'absolute',
@@ -824,6 +881,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     justifyContent: 'flex-end',
+    // backgroundColor: 'green',
   },
   footerPrimaryBtn: {
     marginVertical: 0,
@@ -833,5 +891,45 @@ const styles = StyleSheet.create({
   },
   footerSecondaryBtn: {
     marginVertical: 0,
+  },
+  btnGuideRow: {
+    position: 'absolute',
+    bottom: '100%',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingHorizontal: 0,
+    paddingVertical: spacing.xs,
+  },
+  btnGuideHalf: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  btnGuideBubble: {
+    backgroundColor: colors.ink,
+    borderRadius: borderRadius.medium,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    alignItems: 'center',
+    width: '100%',
+  },
+  btnGuideCaret: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 7,
+    borderRightWidth: 7,
+    borderTopWidth: 7,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: colors.ink,
+  },
+  btnGuideText: {
+    ...textStyles.caption,
+    fontSize: 11,
+    color: colors.surface,
+    textAlign: 'center',
+    fontWeight: '600',
+    lineHeight: 15,
   },
 });

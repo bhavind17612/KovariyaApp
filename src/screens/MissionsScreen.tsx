@@ -1,12 +1,13 @@
-import React,{useCallback,useMemo,useState} from 'react';
-import {Platform,Pressable,ScrollView,StatusBar as RNStatusBar,StyleSheet,Text,View} from 'react-native';
-import {SafeAreaView,useSafeAreaInsets} from 'react-native-safe-area-context';
+import React, { useCallback, useMemo, useState } from 'react';
+import { Platform, Pressable, ScrollView, StatusBar as RNStatusBar, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import {LinearGradient} from 'expo-linear-gradient';
-import {setStatusBarStyle} from 'expo-status-bar';
-import {useFocusEffect} from '@react-navigation/native';
-import {AppGradientHeader,Button,Card} from '../components';
-import {useToast} from '../context/ToastContext';
+import { LinearGradient } from 'expo-linear-gradient';
+import { setStatusBarStyle } from 'expo-status-bar';
+import { useFocusEffect } from '@react-navigation/native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+import { AppGradientHeader, Button } from '../components';
+import { useToast } from '../context/ToastContext';
 import {
 	getFloatingTabBarBottomPadding,
 	borderRadius,
@@ -32,69 +33,69 @@ import {
 	upsertCompletionForDate,
 	type MentorMission,
 } from '../data/mentorMissions';
-import {formatAppDate} from '../utils/dateFormat';
+import { formatAppDate } from '../utils/dateFormat';
 
-type Props={
+type Props = {
 	navigation: {
-		navigate: (screen: string,params?: unknown) => void;
+		navigate: (screen: string, params?: unknown) => void;
 	};
 };
 
-export default function MissionsScreen({navigation}: Props) {
-	const {showToast}=useToast();
+export default function MissionsScreen({ navigation }: Props) {
+	const { showToast } = useToast();
 
 	useFocusEffect(
 		useCallback(() => {
 			setStatusBarStyle('light');
-			if(Platform.OS==='android') {
+			if (Platform.OS === 'android') {
 				RNStatusBar.setTranslucent(true);
 				RNStatusBar.setBackgroundColor('transparent');
 			}
 			return () => {
 				setStatusBarStyle('dark');
-				if(Platform.OS==='android') {
+				if (Platform.OS === 'android') {
 					RNStatusBar.setTranslucent(false);
 					RNStatusBar.setBackgroundColor(colors.background);
 				}
 			};
-		},[])
+		}, [])
 	);
-	const insets=useSafeAreaInsets();
-	const [missionState,setMissionState]=useState<Record<string,MentorMission>>(Object.fromEntries(
-		MENTOR_ASSIGNED_MISSIONS.map((m) => [m.id,m])
+	const insets = useSafeAreaInsets();
+	const [missionState, setMissionState] = useState<Record<string, MentorMission>>(Object.fromEntries(
+		MENTOR_ASSIGNED_MISSIONS.map((m) => [m.id, m])
 	));
 
-	const missions=useMemo(() => {
-		const list=Object.values(missionState);
-		return [...list].sort((a,b) => {
-			const doneA=getDailyStatusForToday(a)==='done'? 0:1;
-			const doneB=getDailyStatusForToday(b)==='done'? 0:1;
-			if(doneA!==doneB) {
-				return doneA-doneB;
+	const missions = useMemo(() => {
+		const list = Object.values(missionState);
+		return [...list].sort((a, b) => {
+			const doneA = getDailyStatusForToday(a) === 'done' ? 0 : 1;
+			const doneB = getDailyStatusForToday(b) === 'done' ? 0 : 1;
+			if (doneA !== doneB) {
+				return doneA - doneB;
 			}
 			return a.title.localeCompare(b.title);
 		});
-	},[missionState]);
-	const bottomPad=useMemo(
+	}, [missionState]);
+	const bottomPad = useMemo(
 		() => getFloatingTabBarBottomPadding(insets.bottom),
 		[insets.bottom]
 	);
 
-	const markDone=useCallback(
+	const markDone = useCallback(
 		(mission: MentorMission) => {
-			const today=getTodayIsoDate();
+			const today = getTodayIsoDate();
 			setMissionState((prev) => {
-				const current=prev[mission.id];
-				if(!current) {
+				const current = prev[mission.id];
+				if (!current) {
 					return prev;
 				}
-				const nextProgress=Math.min(100,current.progressPercent+7);
+				const nextProgress = Math.min(100, current.progressPercent + 7);
 				return {
 					...prev,
 					[mission.id]: {
 						...current,
 						progressPercent: nextProgress,
-						completionHistory: upsertCompletionForDate(current.completionHistory,today,'done'),
+						completionHistory: upsertCompletionForDate(current.completionHistory, today, 'done'),
 					},
 				};
 			});
@@ -106,21 +107,21 @@ export default function MissionsScreen({navigation}: Props) {
 		[showToast]
 	);
 
-	const markMissed=useCallback(
+	const markMissed = useCallback(
 		(mission: MentorMission) => {
-			const today=getTodayIsoDate();
+			const today = getTodayIsoDate();
 			setMissionState((prev) => {
-				const current=prev[mission.id];
-				if(!current) {
+				const current = prev[mission.id];
+				if (!current) {
 					return prev;
 				}
-				const nextProgress=Math.max(0,current.progressPercent-5);
+				const nextProgress = Math.max(0, current.progressPercent - 5);
 				return {
 					...prev,
 					[mission.id]: {
 						...current,
 						progressPercent: nextProgress,
-						completionHistory: upsertCompletionForDate(current.completionHistory,today,'missed'),
+						completionHistory: upsertCompletionForDate(current.completionHistory, today, 'missed'),
 					},
 				};
 			});
@@ -132,7 +133,7 @@ export default function MissionsScreen({navigation}: Props) {
 		[showToast]
 	);
 
-	const uploadProof=useCallback(
+	const uploadProof = useCallback(
 		(mission: MentorMission) => {
 			showToast({
 				type: 'info',
@@ -142,39 +143,40 @@ export default function MissionsScreen({navigation}: Props) {
 		[showToast]
 	);
 
-	const openDetails=useCallback(
+	const openDetails = useCallback(
 		(mission: MentorMission) => {
-			navigation.navigate('MissionDetail',{mission});
+			navigation.navigate('MissionDetail', { mission });
 		},
 		[navigation]
 	);
 
 	return (
-		<SafeAreaView style={styles.root} edges={['left','right','bottom']}>
+		<SafeAreaView style={styles.root} edges={['left', 'right', 'bottom']}>
 			<AppGradientHeader title="Missions" subtitle="Assigned by your mentor" />
 
 			<ScrollView
 				style={styles.scroll}
-				contentContainerStyle={[styles.scrollContent,{paddingBottom: bottomPad}]}
+				contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPad }]}
 				showsVerticalScrollIndicator={false}
 			>
-				{missions.map((mission) => {
-					const typeVisual=missionTypeChipStyle(mission.missionType);
-					const lifecycle=resolveLifecycleStatus(mission);
-					const daily=getDailyStatusForToday(mission);
-					const lifecyclePal=lifecycleFloatingPalette(lifecycle);
-					const dailyPal=dailyFloatingPalette(daily);
-					const canMarkDaily=lifecycle==='active'&&daily!==null;
-					const isDailyDone=daily==='done';
+				{missions.map((mission, index) => {
+					const typeVisual = missionTypeChipStyle(mission.missionType);
+					const lifecycle = resolveLifecycleStatus(mission);
+					const daily = getDailyStatusForToday(mission);
+					const lifecyclePal = lifecycleFloatingPalette(lifecycle);
+					const dailyPal = dailyFloatingPalette(daily);
+					const canMarkDaily = lifecycle === 'active' && daily !== null;
+					const isDailyDone = daily === 'done';
 					return (
-						<Card
+						<Animated.View
 							key={mission.id}
-							variant="elevated"
-							style={StyleSheet.flatten([styles.card,isDailyDone? styles.cardWon:null])}
+							entering={FadeInDown.delay(index * 50).springify().damping(18).stiffness(220)}
+							style={[styles.shadowWrapper, isDailyDone && styles.shadowWrapperWon]}
 						>
+
 							<Pressable
 								onPress={() => openDetails(mission)}
-								style={({pressed}) => [pressed&&styles.cardPressed]}
+								style={({ pressed }) => [pressed && styles.cardPressed]}
 								accessibilityRole="button"
 								accessibilityLabel={`${mission.title}. Open mission details.`}
 							>
@@ -188,20 +190,20 @@ export default function MissionsScreen({navigation}: Props) {
 										style={[
 											styles.floatingPill,
 											floatingPillShadow(lifecyclePal.shadowColor),
-											{backgroundColor: lifecyclePal.bg},
+											{ backgroundColor: lifecyclePal.bg },
 										]}
 									>
-										<Text style={[styles.floatingPillText,{color: lifecyclePal.text}]}>
+										<Text style={[styles.floatingPillText, { color: lifecyclePal.text }]}>
 											{formatLifecycleStatusLabel(lifecycle)}
 										</Text>
 									</View>
 								</View>
 
-								{isDailyDone? (
+								{isDailyDone ? (
 									<LinearGradient
-										colors={[colors.mintSoft,'rgba(232, 248, 238, 0.35)']}
-										start={{x: 0,y: 0}}
-										end={{x: 1,y: 1}}
+										colors={[colors.mintSoft, 'rgba(232, 248, 238, 0.35)']}
+										start={{ x: 0, y: 0 }}
+										end={{ x: 1, y: 1 }}
 										style={styles.winStrip}
 									>
 										<View style={styles.winIconOrb}>
@@ -214,13 +216,13 @@ export default function MissionsScreen({navigation}: Props) {
 											</Text>
 										</View>
 									</LinearGradient>
-								):null}
+								) : null}
 
 								<Text style={styles.cardDesc}>{mission.description}</Text>
 
 								<View style={styles.badgeRow}>
-									<View style={[styles.chip,{backgroundColor: typeVisual.backgroundColor}]}>
-										<Text style={[styles.chipText,{color: typeVisual.color}]}>
+									<View style={[styles.chip, { backgroundColor: typeVisual.backgroundColor }]}>
+										<Text style={[styles.chipText, { color: typeVisual.color }]}>
 											{formatMissionTypeLabel(mission.missionType)}
 										</Text>
 									</View>
@@ -229,10 +231,10 @@ export default function MissionsScreen({navigation}: Props) {
 											styles.floatingPill,
 											styles.floatingPillDaily,
 											floatingPillShadow(dailyPal.shadowColor),
-											{backgroundColor: dailyPal.bg},
+											{ backgroundColor: dailyPal.bg },
 										]}
 									>
-										<Text style={[styles.floatingPillText,{color: dailyPal.text}]}>
+										<Text style={[styles.floatingPillText, { color: dailyPal.text }]}>
 											Today · {formatDailyStatusLabel(daily)}
 										</Text>
 									</View>
@@ -248,12 +250,12 @@ export default function MissionsScreen({navigation}: Props) {
 										<Text style={styles.progressPct}>{mission.progressPercent}%</Text>
 									</View>
 									<View style={styles.progressTrack}>
-										<View style={[styles.progressFill,{width: `${mission.progressPercent}%`}]} />
+										<View style={[styles.progressFill, { width: `${mission.progressPercent}%` }]} />
 									</View>
 								</View>
 							</Pressable>
 
-							{canMarkDaily&&!isDailyDone? (
+							{canMarkDaily && !isDailyDone ? (
 								<View style={styles.actionsRow}>
 									<View style={styles.actionButtonCol}>
 										<Button
@@ -290,9 +292,9 @@ export default function MissionsScreen({navigation}: Props) {
 										/>
 									</View>
 								</View>
-							):null}
+							) : null}
 
-							{mission.missionType==='activity-based'? (
+							{/* {mission.missionType==='activity-based'? (
 								<Button
 									title="Upload Proof"
 									size="small"
@@ -300,8 +302,9 @@ export default function MissionsScreen({navigation}: Props) {
 									onPress={() => uploadProof(mission)}
 									style={styles.uploadBtn}
 								/>
-							):null}
-						</Card>
+							):null} */}
+
+						</Animated.View>
 					);
 				})}
 			</ScrollView>
@@ -309,7 +312,7 @@ export default function MissionsScreen({navigation}: Props) {
 	);
 }
 
-const styles=StyleSheet.create({
+const styles = StyleSheet.create({
 	root: {
 		flex: 1,
 		backgroundColor: colors.background,
@@ -321,12 +324,26 @@ const styles=StyleSheet.create({
 		padding: spacing.lg,
 		paddingVertical: spacing.sm
 	},
-	card: {
-		marginVertical: spacing.xs,
-		overflow: 'visible',
-	},
-	cardWon: {
+	shadowWrapper: {
+		backgroundColor: colors.surface,
+		borderRadius: borderRadius.xl,
 		borderWidth: StyleSheet.hairlineWidth,
+		borderColor: colors.border,
+		overflow: 'hidden',
+		marginVertical: spacing.xs,
+		padding: spacing.md,
+		...Platform.select({
+			ios: {
+				shadowColor: colors.ink,
+				shadowOffset: { width: 0, height: 3 },
+				shadowOpacity: 0.07,
+				shadowRadius: 8,
+			},
+			android: { elevation: 2 },
+			default: {},
+		}),
+	},
+	shadowWrapperWon: {
 		borderColor: 'rgba(63, 169, 122, 0.35)',
 		backgroundColor: colors.surface,
 	},
@@ -393,11 +410,11 @@ const styles=StyleSheet.create({
 		...Platform.select({
 			ios: {
 				shadowColor: '#1A6B4A',
-				shadowOffset: {width: 0,height: 2},
+				shadowOffset: { width: 0, height: 2 },
 				shadowOpacity: 0.18,
 				shadowRadius: 6,
 			},
-			android: {elevation: 3},
+			android: { elevation: 3 },
 			default: {},
 		}),
 	},
@@ -503,7 +520,7 @@ const styles=StyleSheet.create({
 		...Platform.select({
 			ios: {
 				shadowColor: '#1A6B4A',
-				shadowOffset: {width: 0,height: 3},
+				shadowOffset: { width: 0, height: 3 },
 				shadowOpacity: 0.22,
 				shadowRadius: 8,
 			},
@@ -518,7 +535,7 @@ const styles=StyleSheet.create({
 		...Platform.select({
 			ios: {
 				shadowColor: '#B83838',
-				shadowOffset: {width: 0,height: 3},
+				shadowOffset: { width: 0, height: 3 },
 				shadowOpacity: 0.2,
 				shadowRadius: 8,
 			},

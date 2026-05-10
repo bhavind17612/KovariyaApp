@@ -1,16 +1,16 @@
-import React,{useCallback,useEffect,useMemo,useRef,useState} from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
 	KeyboardAvoidingView,
 	Modal,
 	Platform,
 	Pressable,
-  ScrollView,
+	ScrollView,
 	StatusBar as RNStatusBar,
-  StyleSheet,
+	StyleSheet,
 	Text,
 	View,
 } from 'react-native';
-import Animated,{
+import Animated, {
 	FadeInDown,
 	FadeInUp,
 	useAnimatedStyle,
@@ -22,16 +22,16 @@ import Animated,{
 	withSequence,
 	withSpring,
 } from 'react-native-reanimated';
-import {SafeAreaView,useSafeAreaInsets} from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import {LinearGradient} from 'expo-linear-gradient';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import {setStatusBarStyle} from 'expo-status-bar';
-import {useFocusEffect} from '@react-navigation/native';
-import {AppGradientHeader,Button,Card,InputField} from '../components';
-import {useToast} from '../context/ToastContext';
-import type {Goal,GoalStatus} from '../types';
-import {formatAppDate} from '../utils/dateFormat';
+import { setStatusBarStyle } from 'expo-status-bar';
+import { useFocusEffect } from '@react-navigation/native';
+import { AppGradientHeader, Button, Card, InputField } from '../components';
+import { useToast } from '../context/ToastContext';
+import type { Goal, GoalStatus } from '../types';
+import { formatAppDate } from '../utils/dateFormat';
 import {
 	FLOATING_TAB_BAR_VISUAL_HEIGHT,
 	getFloatingTabBarBottomPadding,
@@ -42,9 +42,9 @@ import {
 	typography,
 	shadows,
 } from '../theme';
-import {floatingPillShadow,goalStatusFloatingPalette} from '../theme/missionPillStyles';
+import { floatingPillShadow, goalStatusFloatingPalette } from '../theme/missionPillStyles';
 
-const INITIAL_GOALS: Goal[]=[
+const INITIAL_GOALS: Goal[] = [
 	{
 		id: 'g1',
 		title: 'Morning routine streak',
@@ -84,7 +84,7 @@ const INITIAL_GOALS: Goal[]=[
 /* ─── helper fns ─── */
 
 function formatGoalStatusLabel(status: GoalStatus): string {
-	switch(status) {
+	switch (status) {
 		case 'active':
 			return 'Active';
 		case 'completed':
@@ -97,7 +97,7 @@ function formatGoalStatusLabel(status: GoalStatus): string {
 }
 
 function goalStatusIcon(status: GoalStatus): string {
-	switch(status) {
+	switch (status) {
 		case 'active':
 			return 'play-circle-outline';
 		case 'completed':
@@ -110,63 +110,63 @@ function goalStatusIcon(status: GoalStatus): string {
 }
 
 function rawProgressPercent(goal: Goal): number {
-	if(goal.targetRawPoints<=0) return 0;
-	return Math.min(100,Math.round((goal.currentRawPoints/goal.targetRawPoints)*100));
+	if (goal.targetRawPoints <= 0) return 0;
+	return Math.min(100, Math.round((goal.currentRawPoints / goal.targetRawPoints) * 100));
 }
 
 function rewardDisplay(goal: Goal): string {
-	const base=goal.rewardName.trim();
-	if(goal.rewardValue?.trim()) {
+	const base = goal.rewardName.trim();
+	if (goal.rewardValue?.trim()) {
 		return `${base} (${goal.rewardValue.trim()})`;
 	}
 	return base;
 }
 
-function progressBarColor(pct: number,status: GoalStatus): string {
-	if(status==='completed') return colors.growth;
-	if(status==='paused') return colors.textMuted;
-	if(pct>=75) return colors.growth;
-	if(pct>=40) return colors.primary;
+function progressBarColor(pct: number, status: GoalStatus): string {
+	if (status === 'completed') return colors.growth;
+	if (status === 'paused') return colors.textMuted;
+	if (pct >= 75) return colors.growth;
+	if (pct >= 40) return colors.primary;
 	return colors.accent;
 }
 
 /* ─── FabTooltip ─── */
 
-function FabTooltip({visible}: {visible: boolean}) {
-	const opacity=useSharedValue(0);
-	const translateX=useSharedValue(8);
+function FabTooltip({ visible }: { visible: boolean }) {
+	const opacity = useSharedValue(0);
+	const translateX = useSharedValue(8);
 
 	useEffect(() => {
-		if(visible) {
-			opacity.value=withDelay(
+		if (visible) {
+			opacity.value = withDelay(
 				400,
-				withTiming(1,{duration: 350,easing: Easing.out(Easing.cubic)})
+				withTiming(1, { duration: 350, easing: Easing.out(Easing.cubic) })
 			);
-			translateX.value=withDelay(
+			translateX.value = withDelay(
 				400,
-				withSpring(0,{damping: 14,stiffness: 160})
+				withSpring(0, { damping: 14, stiffness: 160 })
 			);
 			// Fade out after 2.5 s
-			opacity.value=withDelay(
+			opacity.value = withDelay(
 				2900,
-				withTiming(0,{duration: 450,easing: Easing.in(Easing.cubic)})
+				withTiming(0, { duration: 450, easing: Easing.in(Easing.cubic) })
 			);
-			translateX.value=withDelay(
+			translateX.value = withDelay(
 				2900,
-				withTiming(8,{duration: 450})
+				withTiming(8, { duration: 450 })
 			);
 		}
-	},[visible,opacity,translateX]);
+	}, [visible, opacity, translateX]);
 
-	const animStyle=useAnimatedStyle(() => ({
+	const animStyle = useAnimatedStyle(() => ({
 		opacity: opacity.value,
-		transform: [{translateX: translateX.value}],
+		transform: [{ translateX: translateX.value }],
 	}));
 
-	if(!visible) return null;
+	if (!visible) return null;
 
 	return (
-		<Animated.View style={[styles.tooltipBubble,animStyle]} pointerEvents="none">
+		<Animated.View style={[styles.tooltipBubble, animStyle]} pointerEvents="none">
 			<View style={styles.tooltipArrow} />
 			<Text style={styles.tooltipText}>Tap to add a new goal</Text>
 		</Animated.View>
@@ -185,14 +185,14 @@ function SummaryStrip({
 	completed: number;
 }) {
 	return (
-		<Animated.View entering={FadeInDown.springify().damping(18).stiffness(220)}>
-			<View style={styles.summaryStrip}>
-				<SummaryStat icon="flag" label="Total" value={total} tint={colors.primary} />
-				<View style={styles.summaryDivider} />
-				<SummaryStat icon="play-arrow" label="Active" value={active} tint={colors.accent} />
-				<View style={styles.summaryDivider} />
-				<SummaryStat icon="check-circle" label="Done" value={completed} tint={colors.growth} />
-          </View>
+		<Animated.View
+			entering={FadeInDown.springify().damping(18).stiffness(220)}
+			style={styles.summaryStrip}>
+			<SummaryStat icon="flag" label="Total" value={total} tint={colors.primary} />
+			<View style={styles.summaryDivider} />
+			<SummaryStat icon="play-arrow" label="Active" value={active} tint={colors.accent} />
+			<View style={styles.summaryDivider} />
+			<SummaryStat icon="check-circle" label="Done" value={completed} tint={colors.growth} />
 		</Animated.View>
 	);
 }
@@ -210,87 +210,87 @@ function SummaryStat({
 }) {
 	return (
 		<View style={styles.summaryStatCol}>
-			<View style={[styles.summaryStatIconWrap,{backgroundColor: `${tint}18`}]}>
+			<View style={[styles.summaryStatIconWrap, { backgroundColor: `${tint}18` }]}>
 				<Icon name={icon} size={18} color={tint} />
-            </View>
+			</View>
 			<Text style={styles.summaryStatValue}>{value}</Text>
 			<Text style={styles.summaryStatLabel}>{label}</Text>
-    </View>
-  );
+		</View>
+	);
 }
 
 /* ─── Main screen ─── */
 
-const GoalsScreen: React.FC=() => {
-	const {showToast}=useToast();
-	const insets=useSafeAreaInsets();
-	const [goals,setGoals]=useState<Goal[]>(INITIAL_GOALS);
-	const [showTooltip,setShowTooltip]=useState(false);
-	const tooltipShownRef=useRef(false);
+const GoalsScreen: React.FC = () => {
+	const { showToast } = useToast();
+	const insets = useSafeAreaInsets();
+	const [goals, setGoals] = useState<Goal[]>(INITIAL_GOALS);
+	const [showTooltip, setShowTooltip] = useState(false);
+	const tooltipShownRef = useRef(false);
 
 	useFocusEffect(
 		useCallback(() => {
 			setStatusBarStyle('light');
-			if(Platform.OS==='android') {
+			if (Platform.OS === 'android') {
 				RNStatusBar.setTranslucent(true);
 				RNStatusBar.setBackgroundColor('transparent');
 			}
 
 			// Show tooltip only on first visit
-			if(!tooltipShownRef.current) {
-				tooltipShownRef.current=true;
+			if (!tooltipShownRef.current) {
+				tooltipShownRef.current = true;
 				setShowTooltip(true);
 			}
 
 			return () => {
 				setStatusBarStyle('dark');
-				if(Platform.OS==='android') {
+				if (Platform.OS === 'android') {
 					RNStatusBar.setTranslucent(false);
 					RNStatusBar.setBackgroundColor(colors.background);
 				}
 			};
-		},[])
+		}, [])
 	);
 
-	const [modalOpen,setModalOpen]=useState(false);
+	const [modalOpen, setModalOpen] = useState(false);
 
-	const [formTitle,setFormTitle]=useState('');
-	const [formRewardName,setFormRewardName]=useState('');
-	const [formRewardValue,setFormRewardValue]=useState('');
-	const [formStart,setFormStart]=useState('');
-	const [formEnd,setFormEnd]=useState('');
-	const [formTargetRaw,setFormTargetRaw]=useState('');
-	const [formError,setFormError]=useState<string|null>(null);
-	const [isSubmitting,setIsSubmitting]=useState(false);
+	const [formTitle, setFormTitle] = useState('');
+	const [formRewardName, setFormRewardName] = useState('');
+	const [formRewardValue, setFormRewardValue] = useState('');
+	const [formStart, setFormStart] = useState('');
+	const [formEnd, setFormEnd] = useState('');
+	const [formTargetRaw, setFormTargetRaw] = useState('');
+	const [formError, setFormError] = useState<string | null>(null);
+	const [isSubmitting, setIsSubmitting] = useState(false);
 
-	const bottomPad=useMemo(
+	const bottomPad = useMemo(
 		() => getFloatingTabBarBottomPadding(insets.bottom),
 		[insets.bottom]
 	);
 
 	/* FAB sits above tab bar */
-	const fabBottom=useMemo(
-		() => FLOATING_TAB_BAR_VISUAL_HEIGHT+insets.bottom+24,
+	const fabBottom = useMemo(
+		() => FLOATING_TAB_BAR_VISUAL_HEIGHT + insets.bottom + 24,
 		[insets.bottom]
 	);
 
-	const sortedGoals=useMemo(() => {
-		return [...goals].sort((a,b) => {
-			const pri=(g: Goal) => (g.status==='active'? 0:g.status==='paused'? 1:2);
-			const p=pri(a)-pri(b);
-			if(p!==0) return p;
+	const sortedGoals = useMemo(() => {
+		return [...goals].sort((a, b) => {
+			const pri = (g: Goal) => (g.status === 'active' ? 0 : g.status === 'paused' ? 1 : 2);
+			const p = pri(a) - pri(b);
+			if (p !== 0) return p;
 			return a.title.localeCompare(b.title);
 		});
-	},[goals]);
+	}, [goals]);
 
-	const stats=useMemo(() => {
-		const total=goals.length;
-		const active=goals.filter((g) => g.status==='active').length;
-		const completed=goals.filter((g) => g.status==='completed').length;
-		return {total,active,completed};
-	},[goals]);
+	const stats = useMemo(() => {
+		const total = goals.length;
+		const active = goals.filter((g) => g.status === 'active').length;
+		const completed = goals.filter((g) => g.status === 'completed').length;
+		return { total, active, completed };
+	}, [goals]);
 
-	const resetForm=useCallback(() => {
+	const resetForm = useCallback(() => {
 		setFormTitle('');
 		setFormRewardName('');
 		setFormRewardValue('');
@@ -298,47 +298,47 @@ const GoalsScreen: React.FC=() => {
 		setFormEnd('');
 		setFormTargetRaw('');
 		setFormError(null);
-	},[]);
+	}, []);
 
-	const openModal=useCallback(() => {
+	const openModal = useCallback(() => {
 		Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 		resetForm();
 		setModalOpen(true);
-	},[resetForm]);
+	}, [resetForm]);
 
-	const closeModal=useCallback(() => {
+	const closeModal = useCallback(() => {
 		setModalOpen(false);
 		resetForm();
-	},[resetForm]);
+	}, [resetForm]);
 
-	const submitGoal=useCallback(() => {
-		const title=formTitle.trim();
-		const rewardName=formRewardName.trim();
-		const start=formStart.trim();
-		const end=formEnd.trim();
-		const targetStr=formTargetRaw.trim();
+	const submitGoal = useCallback(() => {
+		const title = formTitle.trim();
+		const rewardName = formRewardName.trim();
+		const start = formStart.trim();
+		const end = formEnd.trim();
+		const targetStr = formTargetRaw.trim();
 
-		if(!title||!rewardName||!start||!end||!targetStr) {
+		if (!title || !rewardName || !start || !end || !targetStr) {
 			setFormError('Please fill in all required fields.');
 			Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
 			return;
 		}
 
-		const target=Number.parseInt(targetStr,10);
-		if(!Number.isFinite(target)||target<=0) {
+		const target = Number.parseInt(targetStr, 10);
+		if (!Number.isFinite(target) || target <= 0) {
 			setFormError('Target raw points must be a positive number.');
 			Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
 			return;
 		}
 
-		const startT=Date.parse(start);
-		const endT=Date.parse(end);
-		if(Number.isNaN(startT)||Number.isNaN(endT)) {
+		const startT = Date.parse(start);
+		const endT = Date.parse(end);
+		if (Number.isNaN(startT) || Number.isNaN(endT)) {
 			setFormError('Use valid dates (e.g. 2026-04-15).');
 			Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
 			return;
 		}
-		if(endT<startT) {
+		if (endT < startT) {
 			setFormError('End date must be on or after start date.');
 			Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
 			return;
@@ -350,7 +350,7 @@ const GoalsScreen: React.FC=() => {
 
 		// Simulate brief async save — swap with real API later
 		setTimeout(() => {
-			const newGoal: Goal={
+			const newGoal: Goal = {
 				id: `goal-${Date.now()}`,
 				title,
 				description: '',
@@ -359,19 +359,19 @@ const GoalsScreen: React.FC=() => {
 				startDate: start,
 				endDate: end,
 				rewardName,
-				rewardValue: formRewardValue.trim()||undefined,
+				rewardValue: formRewardValue.trim() || undefined,
 				status: 'active',
 			};
 
-			setGoals((prev) => [newGoal,...prev]);
+			setGoals((prev) => [newGoal, ...prev]);
 			Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 			showToast({
-				type: 'success',message: 'Goal created — it\'s now at the top!'
+				type: 'success', message: 'Goal created — it\'s now at the top!'
 			});
 			setIsSubmitting(false);
 			closeModal();
-		},850);
-	},[
+		}, 850);
+	}, [
 		formTitle,
 		formRewardName,
 		formRewardValue,
@@ -383,7 +383,7 @@ const GoalsScreen: React.FC=() => {
 	]);
 
 	return (
-		<SafeAreaView style={styles.root} edges={['left','right','bottom']}>
+		<SafeAreaView style={styles.root} edges={['left', 'right', 'bottom']}>
 			<AppGradientHeader
 				title="Goals"
 				subtitle="Reward-based behaviour goals"
@@ -391,7 +391,7 @@ const GoalsScreen: React.FC=() => {
 
 			<ScrollView
 				style={styles.scroll}
-				contentContainerStyle={[styles.scrollContent,{paddingBottom: bottomPad}]}
+				contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPad }]}
 				showsVerticalScrollIndicator={false}
 			>
 				{/* ── Summary strip ── */}
@@ -402,28 +402,29 @@ const GoalsScreen: React.FC=() => {
 				/>
 
 				{/* ── Goal cards ── */}
-				{sortedGoals.map((goal,index) => {
-					const pct=rawProgressPercent(goal);
-					const statusPal=goalStatusFloatingPalette(goal.status);
-					const isCompleted=goal.status==='completed';
-					const barColor=progressBarColor(pct,goal.status);
-  return (
+				{sortedGoals.map((goal, index) => {
+					const pct = rawProgressPercent(goal);
+					const statusPal = goalStatusFloatingPalette(goal.status);
+					const isCompleted = goal.status === 'completed';
+					const barColor = progressBarColor(pct, goal.status);
+					return (
 						<Animated.View
 							key={goal.id}
 							entering={FadeInDown.springify()
 								.damping(18)
 								.stiffness(220)
-								.delay(index*60)}
+								.delay(index * 60)}
+							style={styles.shadowWrapper}
 						>
 							<Card
 								variant="elevated"
 								style={StyleSheet.flatten([
 									styles.card,
-									isCompleted? styles.cardCompleted:null,
+									isCompleted ? styles.cardCompleted : null,
 								])}
 							>
 								<Pressable
-									style={({pressed}) => [pressed&&styles.cardPressed]}
+									style={({ pressed }) => [pressed && styles.cardPressed]}
 									accessibilityRole="button"
 									accessibilityLabel={`${goal.title}. ${formatGoalStatusLabel(goal.status)}.`}
 								>
@@ -431,12 +432,12 @@ const GoalsScreen: React.FC=() => {
 									<View style={styles.cardHeader}>
 										<View style={styles.cardTitleRow}>
 											<View
-              style={[
+												style={[
 													styles.statusIconOrb,
-													{backgroundColor: `${statusPal.text}18`},
-              ]}
-            >
-              <Icon
+													{ backgroundColor: `${statusPal.text}18` },
+												]}
+											>
+												<Icon
 													name={goalStatusIcon(goal.status)}
 													size={18}
 													color={statusPal.text}
@@ -449,22 +450,22 @@ const GoalsScreen: React.FC=() => {
 											</View>
 										</View>
 										<View
-                style={[
+											style={[
 												styles.floatingPill,
 												floatingPillShadow(statusPal.shadowColor),
-												{backgroundColor: statusPal.bg},
+												{ backgroundColor: statusPal.bg },
 											]}
 										>
-											<Text style={[styles.floatingPillText,{color: statusPal.text}]}>
+											<Text style={[styles.floatingPillText, { color: statusPal.text }]}>
 												{formatGoalStatusLabel(goal.status)}
 											</Text>
 										</View>
 									</View>
 
 									{/* Description */}
-									{goal.description? (
+									{goal.description ? (
 										<Text style={styles.cardDesc}>{goal.description}</Text>
-									):null}
+									) : null}
 
 									{/* Reward strip */}
 									<View style={styles.rewardStrip}>
@@ -488,7 +489,7 @@ const GoalsScreen: React.FC=() => {
 											<Icon name="star-outline" size={14} color={colors.textMuted} />
 											<Text style={styles.metaItemText}>
 												{goal.currentRawPoints}/{goal.targetRawPoints} pts
-              </Text>
+											</Text>
 										</View>
 									</View>
 
@@ -496,18 +497,18 @@ const GoalsScreen: React.FC=() => {
 									<View style={styles.progressWrap}>
 										<View style={styles.progressHead}>
 											<Text style={styles.progressLabel}>Progress</Text>
-											<Text style={[styles.progressPct,{color: barColor}]}>{pct}%</Text>
+											<Text style={[styles.progressPct, { color: barColor }]}>{pct}%</Text>
 										</View>
 										<View style={styles.progressTrack}>
 											<LinearGradient
 												colors={
 													isCompleted
-														? [colors.growth,'#2C8F63']
-														:[barColor,barColor]
+														? [colors.growth, '#2C8F63']
+														: [barColor, barColor]
 												}
-												start={{x: 0,y: 0}}
-												end={{x: 1,y: 0}}
-												style={[styles.progressFill,{width: `${pct}%`}]}
+												start={{ x: 0, y: 0 }}
+												end={{ x: 1, y: 0 }}
+												style={[styles.progressFill, { width: `${pct}%` }]}
 											/>
 										</View>
 									</View>
@@ -519,22 +520,22 @@ const GoalsScreen: React.FC=() => {
 			</ScrollView>
 
 			{/* ── FAB + Tooltip ── */}
-			<View style={[styles.fabContainer,{bottom: fabBottom}]} pointerEvents="box-none">
-				<FabTooltip visible={showTooltip} />
+			<View style={[styles.fabContainer, { bottom: fabBottom }]} pointerEvents="box-none">
+				{/* <FabTooltip visible={showTooltip} /> */}
 				<Pressable
 					onPress={openModal}
-					style={({pressed}) => [
+					style={({ pressed }) => [
 						styles.fab,
-						pressed&&styles.fabPressed,
+						pressed && styles.fabPressed,
 					]}
 					accessibilityRole="button"
 					accessibilityLabel="Add new goal"
-					android_ripple={{color: 'rgba(255,255,255,0.25)',borderless: true}}
+					android_ripple={{ color: 'rgba(255,255,255,0.25)', borderless: true }}
 				>
 					<LinearGradient
-						colors={[colors.primary,colors.primaryDark]}
-						start={{x: 0,y: 0}}
-						end={{x: 1,y: 1}}
+						colors={[colors.primary, colors.primaryDark]}
+						start={{ x: 0, y: 0 }}
+						end={{ x: 1, y: 1 }}
 						style={styles.fabGradient}
 					>
 						<Icon name="add" size={28} color={colors.surface} />
@@ -551,30 +552,30 @@ const GoalsScreen: React.FC=() => {
 			>
 				<KeyboardAvoidingView
 					style={styles.modalRoot}
-					behavior={Platform.OS==='ios'? 'padding':undefined}
+					behavior={Platform.OS === 'ios' ? 'padding' : undefined}
 				>
-					<SafeAreaView style={styles.modalSafe} edges={['top','left','right']}>
+					<SafeAreaView style={styles.modalSafe} edges={['left', 'right']}>
 						{/* Modal header */}
-						<View style={styles.modalHeader}>
-							<View style={styles.modalHeaderLeft}>
-								<View style={styles.modalIconOrb}>
-									<Icon name="flag" size={20} color={colors.primary} />
-								</View>
-								<View>
-									<Text style={styles.modalTitle}>New goal</Text>
-									<Text style={styles.modalSubtitle}>Set a reward-based behaviour goal</Text>
-								</View>
-							</View>
-							<Pressable
-								onPress={closeModal}
-								style={({pressed}) => [styles.modalClose,pressed&&styles.modalClosePressed]}
-								accessibilityRole="button"
-								accessibilityLabel="Close"
-								disabled={isSubmitting}
-							>
-								<Icon name="close" size={26} color={colors.ink} />
-							</Pressable>
-						</View>
+						<AppGradientHeader
+							title=" New goal"
+							subtitle="Set a reward-based behaviour goal"
+							leadingMode="none"
+							style={{ marginBottom: 0, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}
+							rightAccessory={
+								<Pressable
+									onPress={closeModal}
+									style={({ pressed }) => [
+										{ padding: 8, marginRight: -8, borderRadius: 20 },
+										pressed && { opacity: 0.88 },
+									]}
+									accessibilityRole="button"
+									accessibilityLabel="Close"
+									disabled={isSubmitting}
+								>
+									<Icon name="close" size={26} color="rgba(255, 255, 255, 0.92)" />
+								</Pressable>
+							}
+						/>
 
 						<ScrollView
 							style={styles.modalScroll}
@@ -585,7 +586,7 @@ const GoalsScreen: React.FC=() => {
 							{/* ── Section: Goal details ── */}
 							<View style={styles.formSection}>
 								<View style={styles.formSectionHeader}>
-									<View style={[styles.formSectionIconOrb,{backgroundColor: colors.lavenderSoft}]}>
+									<View style={[styles.formSectionIconOrb, { backgroundColor: colors.lavenderSoft }]}>
 										<Icon name="edit" size={16} color={colors.primary} />
 									</View>
 									<Text style={styles.formSectionTitle}>Goal details</Text>
@@ -604,7 +605,7 @@ const GoalsScreen: React.FC=() => {
 							{/* ── Section: Reward ── */}
 							<View style={styles.formSection}>
 								<View style={styles.formSectionHeader}>
-									<View style={[styles.formSectionIconOrb,{backgroundColor: colors.peachSoft}]}>
+									<View style={[styles.formSectionIconOrb, { backgroundColor: colors.peachSoft }]}>
 										<Icon name="emoji-events" size={16} color={colors.accent} />
 									</View>
 									<Text style={styles.formSectionTitle}>Reward</Text>
@@ -631,7 +632,7 @@ const GoalsScreen: React.FC=() => {
 							{/* ── Section: Schedule ── */}
 							<View style={styles.formSection}>
 								<View style={styles.formSectionHeader}>
-									<View style={[styles.formSectionIconOrb,{backgroundColor: colors.skySoft}]}>
+									<View style={[styles.formSectionIconOrb, { backgroundColor: colors.skySoft }]}>
 										<Icon name="date-range" size={16} color={colors.info} />
 									</View>
 									<Text style={styles.formSectionTitle}>Schedule</Text>
@@ -645,7 +646,7 @@ const GoalsScreen: React.FC=() => {
 												value={formStart}
 												onChangeText={setFormStart}
 												autoCapitalize="none"
-												leftIcon={<Icon name="play-arrow" size={16} color={colors.textMuted} />}
+											// leftIcon={<Icon name="play-arrow" size={16} color={colors.textMuted} />}
 											/>
 										</View>
 										<View style={styles.dateFieldCol}>
@@ -655,7 +656,7 @@ const GoalsScreen: React.FC=() => {
 												value={formEnd}
 												onChangeText={setFormEnd}
 												autoCapitalize="none"
-												leftIcon={<Icon name="stop" size={16} color={colors.textMuted} />}
+											// leftIcon={<Icon name="stop" size={16} color={colors.textMuted} />}
 											/>
 										</View>
 									</View>
@@ -665,7 +666,7 @@ const GoalsScreen: React.FC=() => {
 							{/* ── Section: Target ── */}
 							<View style={styles.formSection}>
 								<View style={styles.formSectionHeader}>
-									<View style={[styles.formSectionIconOrb,{backgroundColor: colors.mintSoft}]}>
+									<View style={[styles.formSectionIconOrb, { backgroundColor: colors.mintSoft }]}>
 										<Icon name="star" size={16} color={colors.growth} />
 									</View>
 									<Text style={styles.formSectionTitle}>Target</Text>
@@ -680,14 +681,14 @@ const GoalsScreen: React.FC=() => {
 										leftIcon={<Icon name="speed" size={18} color={colors.textMuted} />}
 									/>
 								</View>
-        </View>
+							</View>
 
-							{formError? (
+							{formError ? (
 								<View style={styles.formErrorWrap}>
 									<Icon name="error-outline" size={16} color={colors.error} />
 									<Text style={styles.formError}>{formError}</Text>
-        </View>
-							):null}
+								</View>
+							) : null}
 
 							<Button
 								title="Create goal"
@@ -697,45 +698,45 @@ const GoalsScreen: React.FC=() => {
 								disabled={isSubmitting}
 								onPress={submitGoal}
 								style={styles.submitBtn}
-								icon={!isSubmitting? <Icon name="check" size={20} color={colors.surface} />:undefined}
+								icon={!isSubmitting ? <Icon name="check" size={20} color={colors.surface} /> : undefined}
 							/>
-      </ScrollView>
+						</ScrollView>
 					</SafeAreaView>
 				</KeyboardAvoidingView>
 			</Modal>
-    </SafeAreaView>
-  );
+		</SafeAreaView>
+	);
 };
 
-const styles=StyleSheet.create({
+const styles = StyleSheet.create({
 	/* ─── Root ─── */
 	root: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
+		flex: 1,
+		backgroundColor: colors.background,
+	},
 	scroll: {
-    flex: 1,
+		flex: 1,
 	},
 	scrollContent: {
 		padding: spacing.lg,
 		paddingVertical: spacing.sm,
-  },
+	},
 
 	/* ─── Summary strip ─── */
 	summaryStrip: {
-    flexDirection: 'row',
+		flexDirection: 'row',
 		alignItems: 'center',
-    backgroundColor: colors.surface,
+		backgroundColor: colors.surface,
 		borderRadius: borderRadius.xl,
 		paddingVertical: spacing.md,
 		paddingHorizontal: spacing.sm,
-    marginBottom: spacing.md,
+		marginBottom: spacing.md,
 		borderWidth: StyleSheet.hairlineWidth,
 		borderColor: colors.border,
 		...shadows.soft,
-  },
+	},
 	summaryStatCol: {
-    flex: 1,
+		flex: 1,
 		alignItems: 'center',
 		gap: 4,
 	},
@@ -743,8 +744,8 @@ const styles=StyleSheet.create({
 		width: 32,
 		height: 32,
 		borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
+		alignItems: 'center',
+		justifyContent: 'center',
 		marginBottom: 2,
 	},
 	summaryStatValue: {
@@ -754,14 +755,33 @@ const styles=StyleSheet.create({
 		fontSize: 20,
 	},
 	summaryStatLabel: {
-    ...textStyles.caption,
+		...textStyles.caption,
 		color: colors.textMuted,
-    fontWeight: '600',
-  },
+		fontWeight: '600',
+	},
 	summaryDivider: {
 		width: StyleSheet.hairlineWidth,
 		height: 40,
 		backgroundColor: colors.border,
+	},
+	shadowWrapper: {
+		backgroundColor: colors.surface,
+		borderRadius: borderRadius.xl,
+		borderWidth: StyleSheet.hairlineWidth,
+		borderColor: colors.border,
+		overflow: 'hidden',
+		marginVertical: spacing.sm,
+		// padding: spacing.md,
+		...Platform.select({
+			ios: {
+				shadowColor: colors.ink,
+				shadowOffset: { width: 0, height: 3 },
+				shadowOpacity: 0.07,
+				shadowRadius: 8,
+			},
+			android: { elevation: 2 },
+			default: {},
+		}),
 	},
 
 	/* ─── Cards ─── */
@@ -778,9 +798,9 @@ const styles=StyleSheet.create({
 		opacity: 0.92,
 	},
 	cardHeader: {
-    flexDirection: 'row',
+		flexDirection: 'row',
 		alignItems: 'flex-start',
-    justifyContent: 'space-between',
+		justifyContent: 'space-between',
 		gap: spacing.sm,
 		minHeight: 40,
 	},
@@ -795,7 +815,7 @@ const styles=StyleSheet.create({
 		width: 34,
 		height: 34,
 		borderRadius: 17,
-    alignItems: 'center',
+		alignItems: 'center',
 		justifyContent: 'center',
 		flexShrink: 0,
 	},
@@ -804,8 +824,8 @@ const styles=StyleSheet.create({
 		minWidth: 0,
 	},
 	cardTitle: {
-    ...textStyles.headingMedium,
-    flex: 1,
+		...textStyles.headingMedium,
+		flex: 1,
 		color: colors.ink,
 		fontWeight: '800',
 	},
@@ -823,19 +843,19 @@ const styles=StyleSheet.create({
 	},
 	cardDesc: {
 		...textStyles.bodyMedium,
-    color: colors.textSecondary,
+		color: colors.textSecondary,
 		marginTop: spacing.sm,
 		lineHeight: 20,
-  },
+	},
 
 	/* ─── Reward strip ─── */
 	rewardStrip: {
-    flexDirection: 'row',
-    alignItems: 'center',
+		flexDirection: 'row',
+		alignItems: 'center',
 		gap: spacing.sm,
 		marginTop: spacing.md,
 		paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
+		paddingHorizontal: spacing.sm,
 		backgroundColor: colors.peachSoft,
 		borderRadius: borderRadius.large,
 		borderWidth: StyleSheet.hairlineWidth,
@@ -851,15 +871,15 @@ const styles=StyleSheet.create({
 		...Platform.select({
 			ios: {
 				shadowColor: '#9A5D14',
-				shadowOffset: {width: 0,height: 1},
+				shadowOffset: { width: 0, height: 1 },
 				shadowOpacity: 0.12,
 				shadowRadius: 4,
 			},
-			android: {elevation: 2},
+			android: { elevation: 2 },
 			default: {},
 		}),
-  },
-  rewardText: {
+	},
+	rewardText: {
 		...textStyles.bodyMedium,
 		flex: 1,
 		color: '#7A4E18',
@@ -879,7 +899,7 @@ const styles=StyleSheet.create({
 		gap: 6,
 	},
 	metaItemText: {
-    ...textStyles.caption,
+		...textStyles.caption,
 		color: colors.textMuted,
 		fontWeight: '600',
 	},
@@ -889,8 +909,8 @@ const styles=StyleSheet.create({
 		marginTop: spacing.md,
 	},
 	progressHead: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+		flexDirection: 'row',
+		justifyContent: 'space-between',
 		marginBottom: spacing.xs,
 	},
 	progressLabel: {
@@ -917,7 +937,7 @@ const styles=StyleSheet.create({
 	fabContainer: {
 		position: 'absolute',
 		right: spacing.lg,
-    flexDirection: 'row',
+		flexDirection: 'row',
 		alignItems: 'center',
 		zIndex: 50,
 	},
@@ -929,7 +949,7 @@ const styles=StyleSheet.create({
 		...Platform.select({
 			ios: {
 				shadowColor: colors.primaryDark,
-				shadowOffset: {width: 0,height: 6},
+				shadowOffset: { width: 0, height: 6 },
 				shadowOpacity: 0.35,
 				shadowRadius: 14,
 			},
@@ -941,12 +961,12 @@ const styles=StyleSheet.create({
 	},
 	fabGradient: {
 		flex: 1,
-    alignItems: 'center',
+		alignItems: 'center',
 		justifyContent: 'center',
 	},
 	fabPressed: {
 		opacity: 0.88,
-		transform: [{scale: 0.94}],
+		transform: [{ scale: 0.94 }],
 	},
 
 	/* ─── Tooltip ─── */
@@ -960,11 +980,11 @@ const styles=StyleSheet.create({
 		...Platform.select({
 			ios: {
 				shadowColor: colors.ink,
-				shadowOffset: {width: 0,height: 4},
+				shadowOffset: { width: 0, height: 4 },
 				shadowOpacity: 0.2,
 				shadowRadius: 8,
 			},
-			android: {elevation: 6},
+			android: { elevation: 6 },
 			default: {},
 		}),
 	},
@@ -983,7 +1003,7 @@ const styles=StyleSheet.create({
 		borderLeftColor: colors.ink,
 	},
 	tooltipText: {
-    ...textStyles.caption,
+		...textStyles.caption,
 		color: colors.surface,
 		fontWeight: '700',
 		letterSpacing: 0.1,
@@ -998,9 +1018,9 @@ const styles=StyleSheet.create({
 		flex: 1,
 	},
 	modalHeader: {
-    flexDirection: 'row',
+		flexDirection: 'row',
 		alignItems: 'center',
-    justifyContent: 'space-between',
+		justifyContent: 'space-between',
 		paddingHorizontal: spacing.lg,
 		paddingVertical: spacing.md,
 		borderBottomWidth: StyleSheet.hairlineWidth,
@@ -1019,11 +1039,11 @@ const styles=StyleSheet.create({
 		height: 40,
 		borderRadius: 20,
 		backgroundColor: colors.lavenderSoft,
-    alignItems: 'center',
+		alignItems: 'center',
 		justifyContent: 'center',
-  },
+	},
 	modalTitle: {
-    ...textStyles.headingMedium,
+		...textStyles.headingMedium,
 		fontWeight: '800',
 		color: colors.ink,
 	},
@@ -1044,8 +1064,8 @@ const styles=StyleSheet.create({
 		backgroundColor: colors.surfaceMuted,
 	},
 	modalScroll: {
-    flex: 1,
-  },
+		flex: 1,
+	},
 	modalScrollContent: {
 		paddingHorizontal: spacing.md,
 		paddingTop: spacing.sm,
@@ -1062,8 +1082,8 @@ const styles=StyleSheet.create({
 		overflow: 'hidden',
 	},
 	formSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+		flexDirection: 'row',
+		alignItems: 'center',
 		gap: spacing.sm,
 		paddingHorizontal: spacing.md,
 		paddingTop: spacing.sm,
@@ -1077,8 +1097,8 @@ const styles=StyleSheet.create({
 		justifyContent: 'center',
 	},
 	formSectionTitle: {
-    ...textStyles.caption,
-    color: colors.textSecondary,
+		...textStyles.caption,
+		color: colors.textSecondary,
 		fontWeight: '800',
 		textTransform: 'uppercase',
 		letterSpacing: 0.5,
@@ -1100,9 +1120,9 @@ const styles=StyleSheet.create({
 	},
 	formErrorWrap: {
 		flexDirection: 'row',
-    alignItems: 'center',
+		alignItems: 'center',
 		gap: spacing.sm,
-    marginTop: spacing.sm,
+		marginTop: spacing.sm,
 		padding: spacing.sm,
 		backgroundColor: 'rgba(232, 93, 93, 0.08)',
 		borderRadius: borderRadius.medium,
@@ -1110,14 +1130,14 @@ const styles=StyleSheet.create({
 		borderColor: 'rgba(232, 93, 93, 0.2)',
 	},
 	formError: {
-    ...textStyles.caption,
+		...textStyles.caption,
 		color: colors.error,
 		fontWeight: '600',
 		flex: 1,
 	},
 	submitBtn: {
 		marginTop: spacing.md,
-  },
+	},
 });
 
 export default GoalsScreen;

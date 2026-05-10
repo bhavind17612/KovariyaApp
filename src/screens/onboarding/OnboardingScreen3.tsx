@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
 	View,
 	Text,
@@ -11,6 +11,7 @@ import {
 	Modal,
 	ActivityIndicator,
 	TextInput,
+	Keyboard,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -59,7 +60,7 @@ const spStyles = StyleSheet.create({
 	},
 });
 
-const GRADES = ['Kindergarten', ...Array.from({ length: 12 }, (_, i) => `Grade ${i + 1}`)];
+const GRADES = ['Kindergarten', ...Array.from({ length: 12 }, (_, i) => `Class ${i + 1}`)];
 const currentYear = new Date().getFullYear();
 
 const SHEET_ANIM_CFG = { duration: 320, easing: Easing.out(Easing.cubic) };
@@ -91,7 +92,7 @@ const GradeSheet = ({
 			<Animated.View style={[styles.gradeSheet, sheetStyle]}>
 				{/* <View style={styles.pickerHandle} /> */}
 				<View style={styles.gradeSheetHeader}>
-					<Text style={styles.gradeSheetTitle}>Select Grade</Text>
+					<Text style={styles.gradeSheetTitle}>Select Class</Text>
 					<Pressable onPress={onClose} style={styles.gradeSheetClose}>
 						<Icon name="close" size={22} color={colors.textSecondary} />
 					</Pressable>
@@ -151,7 +152,7 @@ const SchoolSheet = ({
 	return (
 		<Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
 			<Pressable style={styles.modalOverlay} onPress={onClose} />
-			<KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end' }]} pointerEvents="box-none">
+			<KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end' }]} pointerEvents="box-none">
 				<Animated.View style={[styles.gradeSheet, sheetStyle]}>
 					<View style={styles.gradeSheetHeader}>
 						<Text style={styles.gradeSheetTitle}>Select School</Text>
@@ -211,9 +212,8 @@ const SchoolSheet = ({
 };
 
 const GENDERS = [
-	{ key: 'boy', label: 'Boy', emoji: '👦' },
-	{ key: 'girl', label: 'Girl', emoji: '👧' },
-	{ key: 'other', label: 'Other', emoji: '🧒' },
+	{ key: 'male', label: 'Male', emoji: '👦' },
+	{ key: 'female', label: 'Female', emoji: '👧' },
 ];
 
 interface Props { navigation: any; }
@@ -258,6 +258,14 @@ export function OnboardingScreen3({ navigation }: Props) {
 	const goBack = () => {
 		Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 		navigation.goBack();
+	};
+
+	const openSchoolModal = () => {
+		Keyboard.dismiss();
+		setTimeout(() => {
+			setShowSchoolSheet(true);
+			Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+		}, 250);
 	};
 
 	// ── Open date picker ────────────────────────────────────────────────────────
@@ -323,11 +331,11 @@ export function OnboardingScreen3({ navigation }: Props) {
 							</Animated.View>
 
 							<Animated.View entering={FadeInDown.duration(400).delay(200)} style={styles.sectionMargin}>
-								<Text style={styles.label}>Class / Grade</Text>
+								<Text style={styles.label}>Class</Text>
 								<Pressable style={styles.inputWrap} onPress={() => { setShowGradeSheet(true); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
 									<Icon name="school" size={20} color={colors.textMuted} />
 									<Text style={[styles.inputText, !grade ? styles.inputTextMuted : null]}>
-										{grade || 'Select grade…'}
+										{grade || 'Select class…'}
 									</Text>
 									<Icon name="keyboard-arrow-down" size={20} color={colors.textSecondary} />
 								</Pressable>
@@ -335,7 +343,7 @@ export function OnboardingScreen3({ navigation }: Props) {
 
 							<Animated.View entering={FadeInDown.duration(400).delay(250)} style={styles.sectionMargin}>
 								<Text style={styles.label}>School</Text>
-								<Pressable style={styles.inputWrap} onPress={() => { setShowSchoolSheet(true); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
+								<Pressable style={styles.inputWrap} onPress={() => { openSchoolModal(); }}>
 									<Icon name="account-balance" size={20} color={colors.textMuted} />
 									<Text style={[styles.inputText, !school ? styles.inputTextMuted : null]} numberOfLines={1}>
 										{school || 'Select your school…'}
@@ -351,6 +359,7 @@ export function OnboardingScreen3({ navigation }: Props) {
 										const isActive = gender === g.key;
 										return (
 											<Pressable
+												android_ripple={{ color: '#7C6AE8', borderless: false, foreground: true }}
 												key={g.key}
 												style={[styles.genderChip, isActive ? styles.genderChipActive : null]}
 												onPress={() => { setGender(g.key); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
@@ -383,6 +392,7 @@ export function OnboardingScreen3({ navigation }: Props) {
 						style={[styles.stickyBottom, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}
 					>
 						<Pressable
+							android_ripple={{ color: 'rgba(255, 255, 255, 0.6)', foreground: true }}
 							style={({ pressed }) => [
 								styles.ctaBtn,
 								!isFormValid && !isLoading ? styles.ctaBtnDisabled : null,
@@ -483,6 +493,7 @@ const styles = StyleSheet.create({
 		borderWidth: 2,
 		borderColor: 'transparent',
 		gap: spacing.xs,
+		overflow: 'hidden',
 	},
 	genderChipActive: { backgroundColor: colors.lavenderSoft, borderColor: colors.primary, ...shadows.small },
 	genderEmoji: { fontSize: 24 },

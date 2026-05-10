@@ -26,6 +26,7 @@ const AspectScoreGrid: React.FC<AspectScoreGridProps> = ({ aspects }) => {
 	return (
 		<Animated.View
 			entering={FadeInDown.delay(160).springify().damping(18).stiffness(220)}
+			style={[s.shadowWrapper, { marginBottom: spacing.sm }]}
 		>
 			<View style={s.sectionWrap}>
 				{/* Header with toggle */}
@@ -176,25 +177,33 @@ const AspectTile: React.FC<AspectTileProps> = React.memo(({
 /*  Styles                                                            */
 /* ═══════════════════════════════════════════════════════════════════ */
 const s = StyleSheet.create({
+	shadowWrapper: {
+		backgroundColor: colors.surface,
+		borderRadius: borderRadius.xl,
+		borderWidth: StyleSheet.hairlineWidth,
+		borderColor: colors.border,
+		overflow: 'hidden',
+		marginVertical: spacing.sm,
+		// padding: spacing.md,
+		...Platform.select({
+			ios: {
+				shadowColor: colors.ink,
+				shadowOffset: { width: 0, height: 3 },
+				shadowOpacity: 0.07,
+				shadowRadius: 8,
+			},
+			android: { elevation: 2 },
+			default: {},
+		}),
+	},
 	sectionWrap: {
 		// flexDirection: 'row',
-		marginBottom: spacing.md,
 		padding: spacing.md,
 		backgroundColor: colors.surface,
 		borderRadius: borderRadius.xl,
 		overflow: 'hidden',
 		borderWidth: StyleSheet.hairlineWidth,
 		borderColor: 'rgba(17,17,17,0.06)',
-		...Platform.select({
-			ios: {
-				shadowColor: colors.ink,
-				shadowOffset: { width: 0, height: 6 },
-				shadowOpacity: 0.07,
-				shadowRadius: 18,
-			},
-			android: { elevation: 4 },
-			default: {},
-		}),
 	},
 	sectionHeaderRow: {
 		flexDirection: 'row',

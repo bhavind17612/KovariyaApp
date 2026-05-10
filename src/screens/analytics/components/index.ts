@@ -6,4 +6,5 @@ export { default as ProgressTrendsChart } from './ProgressTrendsChart';
 export { default as SummaryStats } from './SummaryStats';
 export { default as InsightsSection } from './InsightsSection';
 export { default as FABReports } from './FABReports';
+export { default as DayLogsSheet } from './DayLogsSheet';
 export { AnimatedNumber, SemiCircleGauge, RoundGauge } from './gauges';

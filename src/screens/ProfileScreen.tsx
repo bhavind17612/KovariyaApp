@@ -9,6 +9,7 @@ import {
   TextStyle,
   Platform,
   StatusBar as RNStatusBar,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -192,15 +193,18 @@ const ProfileScreen: React.FC = () => {
   const navigation = useNavigation<any>();
 
   const handleSettingPress = useCallback((id: SettingId) => {
-    const routes: Record<SettingId, string> = {
-      notifications: 'NotificationSettings',
-      privacy: 'PrivacySecurity',
-      help: 'HelpSupport',
-      feedback: 'SendFeedback',
-      about: 'About',
-    };
-    navigation.navigate(routes[id]);
-  }, [navigation]);
+
+    // const routes: Record<SettingId, string> = {
+    //   notifications: 'NotificationSettings',
+    //   privacy: 'PrivacySecurity',
+    //   help: 'HelpSupport',
+    //   feedback: 'SendFeedback',
+    //   about: 'About',
+    // };
+    Alert.alert('opened ', id);
+    // navigation.navigate(routes[id]);
+    // }, [navigation]);
+  }, []);
 
   const onChildAdded = useCallback((child: Child) => {
     setChildrenList((prev) => [child, ...prev]);

@@ -114,8 +114,8 @@ export const AIInsightsCard = React.memo(function AIInsightsCard({ payload }: Pr
 
 const styles = StyleSheet.create({
   card: {
-    marginHorizontal: spacing.lg,
-    marginVertical: spacing.xs,
+    // marginHorizontal: spacing.lg,
+    // marginVertical: spacing.xs,
   },
   headerCluster: {
     flexDirection: 'row',

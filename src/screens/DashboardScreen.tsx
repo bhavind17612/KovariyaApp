@@ -31,6 +31,7 @@ import {
   AspectRatingSheet,
   WeeklyAspectProgressChart,
   AIInsightsCard,
+  LanguagePickerSheet,
 } from '../components';
 import {
   colors,
@@ -48,6 +49,7 @@ import {
   type RatingAspectDefinition,
   type AspectRatingPayload,
 } from '../data/aspectRating';
+import { type SupportedLanguage } from '../data/aspectRatingI18n';
 import { getWeeklyAspectProgressSeries } from '../data/weeklyAspectProgress';
 import { getAIInsightsForChild } from '../data/aiInsights';
 
@@ -206,6 +208,9 @@ const DashboardScreen: React.FC = () => {
     Record<string, TodayMissionStatus>
   >({});
   const [ratingSheetAspect, setRatingSheetAspect] = useState<RatingAspectDefinition | null>(null);
+  const [pendingAspect, setPendingAspect] = useState<RatingAspectDefinition | null>(null);
+  const [langPickerVisible, setLangPickerVisible] = useState(false);
+  const [ratingLang, setRatingLang] = useState<SupportedLanguage>('en');
   const selectedChild = useMemo(
     () => children.find((c) => c.id === selectedChildId) ?? children[0],
     [children, selectedChildId]
@@ -237,8 +242,18 @@ const DashboardScreen: React.FC = () => {
   }, [selectedChild.id]);
 
   const openAspectRating = useCallback((aspect: RatingAspectDefinition) => {
-    setRatingSheetAspect(aspect);
+    setPendingAspect(aspect);
+    setLangPickerVisible(true);
   }, []);
+
+  const handleLanguageSelected = useCallback((lang: SupportedLanguage) => {
+    setRatingLang(lang);
+    setLangPickerVisible(false);
+    if (pendingAspect) {
+      setRatingSheetAspect(pendingAspect);
+      setPendingAspect(null);
+    }
+  }, [pendingAspect]);
 
   const closeAspectRating = useCallback(() => setRatingSheetAspect(null), []);
 
@@ -248,7 +263,7 @@ const DashboardScreen: React.FC = () => {
         DASHBOARD_RATING_ASPECTS.find((a) => a.id === payload.aspectId)?.name ?? 'Aspect';
       showToast({
         type: 'success',
-        message: `Saved · ${label} for ${selectedChild.name}. You can add another log with Save entry.`,
+        message: `Saved · today's behaviour log for ${selectedChild.name}. You can add another log with Save entry.`,
       });
     },
     [selectedChild.name, showToast]
@@ -345,40 +360,43 @@ const DashboardScreen: React.FC = () => {
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPad }]}
       >
-        <Animated.View entering={FadeInDown.springify().damping(18).stiffness(220)}>
-          <View style={styles.ratingAspectsSection}>
+        <View style={styles.ratingAspectsSection}>
+          <Animated.View entering={FadeInDown.springify().damping(18).stiffness(220)}>
             <View style={styles.ratingAspectsHeader}>
               <Text style={styles.ratingAspectsTitle}>Today&apos;s behaviour</Text>
               <Text style={styles.ratingAspectsSubtitle}>
                 Tap any of the 5 cards below to log behaviour and build points. You can update multiple times throughout the day.
               </Text>
             </View>
-            <View
-              style={[
-                styles.ratingAspectsGrid,
-                { columnGap: aspectTileMetrics.gap, rowGap: aspectTileMetrics.gap },
-              ]}
-            >
-              {DASHBOARD_RATING_ASPECTS.map((aspect, index) => {
-                const tileW = index < 3 ? aspectTileMetrics.width3 : aspectTileMetrics.width2;
-                const sumStr = formatDailyRatingSum(aspect.dailyRatingSum);
-                const sumColor =
-                  aspect.dailyRatingSum > 0
-                    ? colors.growth
-                    : aspect.dailyRatingSum < 0
-                      ? colors.error
-                      : colors.textMuted;
-                return (
+          </Animated.View>
+          <View
+            style={[
+              styles.ratingAspectsGrid,
+              { columnGap: aspectTileMetrics.gap, rowGap: aspectTileMetrics.gap },
+            ]}
+          >
+            {DASHBOARD_RATING_ASPECTS.map((aspect, index) => {
+              const tileW = index < 3 ? aspectTileMetrics.width3 : aspectTileMetrics.width2;
+              const sumStr = formatDailyRatingSum(aspect.dailyRatingSum);
+              const sumColor =
+                aspect.dailyRatingSum > 0
+                  ? colors.growth
+                  : aspect.dailyRatingSum < 0
+                    ? colors.error
+                    : colors.textMuted;
+              return (
+                <Animated.View
+                  key={aspect.id}
+                  entering={FadeInDown.delay(index * 60).springify().damping(18).stiffness(220)}
+                  style={[
+                    styles.ratingAspectShadowWrapper,
+                    { width: tileW, backgroundColor: aspect.softBg, borderColor: aspect.borderColor },
+                  ]}
+                >
                   <Pressable
-                    key={aspect.id}
                     onPress={() => openAspectRating(aspect)}
                     style={({ pressed }) => [
                       styles.ratingAspectCard,
-                      { width: tileW },
-                      {
-                        backgroundColor: aspect.softBg,
-                        borderColor: aspect.borderColor,
-                      },
                       pressed && styles.ratingAspectCardPressed,
                     ]}
                     accessibilityRole="button"
@@ -399,63 +417,68 @@ const DashboardScreen: React.FC = () => {
                       <Text style={styles.ratingAspectSumHint}>pts</Text>
                     </View>
                   </Pressable>
-                );
-              })}
-            </View>
+                </Animated.View>
+              );
+            })}
           </View>
-        </Animated.View>
+        </View>
 
-        <Animated.View entering={FadeInDown.springify().damping(18).stiffness(220)}>
-          <View style={styles.section}>
-            <View style={styles.missionCardOuter}>
-              <LinearGradient
-                colors={missionCardGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.missionGradient}
-              >
-                <View style={styles.missionOrbs} pointerEvents="none">
-                  <View style={styles.missionOrbA} />
-                  <View style={styles.missionOrbB} />
-                  <View style={styles.missionOrbC} />
+        <Animated.View
+          entering={FadeInDown.delay(0).springify().damping(18).stiffness(220)}
+          style={styles.shadowWrapper}
+        >
+          <View style={styles.missionCardOuter}>
+            <LinearGradient
+              colors={missionCardGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.missionGradient}
+            >
+              <View style={styles.missionOrbs} pointerEvents="none">
+                <View style={styles.missionOrbA} />
+                <View style={styles.missionOrbB} />
+                <View style={styles.missionOrbC} />
+              </View>
+
+              <View style={styles.missionTopBar}>
+                <View style={styles.missionBrandChip}>
+                  <Icon name="rocket-launch" size={16} color={colors.primary} />
                 </View>
-
-                <View style={styles.missionTopBar}>
-                  <View style={styles.missionBrandChip}>
-                    <Icon name="rocket-launch" size={16} color={colors.primary} />
-                  </View>
-                  <View style={styles.missionTopBarText}>
-                    <Text style={styles.missionKicker}>Today&apos;s Mission</Text>
-                    <Text style={styles.missionKickerSub}>Small steps · big habits</Text>
-                  </View>
-                  {todayMissionStatus !== 'pending' ? (
-                    <View
+                <View style={styles.missionTopBarText}>
+                  <Text style={styles.missionKicker}>Today&apos;s Mission</Text>
+                  <Text style={styles.missionKickerSub}>Small steps · big habits</Text>
+                </View>
+                {todayMissionStatus !== 'pending' ? (
+                  <View
+                    style={[
+                      styles.missionStatusChip,
+                      todayMissionStatus === 'done'
+                        ? styles.missionStatusChipDone
+                        : styles.missionStatusChipMissed,
+                    ]}
+                  >
+                    <Icon
+                      name={todayMissionStatus === 'done' ? 'check-circle' : 'event-busy'}
+                      size={14}
+                      color={todayMissionStatus === 'done' ? colors.growth : colors.warning}
+                    />
+                    <Text
                       style={[
-                        styles.missionStatusChip,
+                        styles.missionStatusChipText,
                         todayMissionStatus === 'done'
-                          ? styles.missionStatusChipDone
-                          : styles.missionStatusChipMissed,
+                          ? { color: colors.growth }
+                          : { color: colors.warning },
                       ]}
                     >
-                      <Icon
-                        name={todayMissionStatus === 'done' ? 'check-circle' : 'event-busy'}
-                        size={14}
-                        color={todayMissionStatus === 'done' ? colors.growth : colors.warning}
-                      />
-                      <Text
-                        style={[
-                          styles.missionStatusChipText,
-                          todayMissionStatus === 'done'
-                            ? { color: colors.growth }
-                            : { color: colors.warning },
-                        ]}
-                      >
-                        {todayMissionStatus === 'done' ? 'Done' : 'Missed'}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-
+                      {todayMissionStatus === 'done' ? 'Done' : 'Missed'}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+              <Animated.View
+                entering={FadeInDown.delay(0).springify().damping(18).stiffness(220)}
+                style={styles.shadowWrapper2}
+              >
                 <View style={styles.missionGlassPanel}>
                   <Text style={styles.missionTitle}>{todayMission.title}</Text>
                   <Text style={styles.missionDetail} numberOfLines={4}>
@@ -473,7 +496,7 @@ const DashboardScreen: React.FC = () => {
                             <Icon name="check-circle" size={18} color={colors.surface} />
                           }
                           onPress={() => setTodayMissionForSelectedChild('done')}
-                          style={StyleSheet.flatten([
+                          btnStyle={StyleSheet.flatten([
                             styles.missionButtonDone,
                             {
                               backgroundColor: colors.growth,
@@ -492,7 +515,7 @@ const DashboardScreen: React.FC = () => {
                             <Icon name="highlight-off" size={18} color={colors.surface} />
                           }
                           onPress={() => setTodayMissionForSelectedChild('missed')}
-                          style={StyleSheet.flatten([
+                          btnStyle={StyleSheet.flatten([
                             styles.missionButtonMissed,
                             {
                               backgroundColor: colors.error,
@@ -523,12 +546,15 @@ const DashboardScreen: React.FC = () => {
                     </View>
                   )}
                 </View>
-              </LinearGradient>
-            </View>
+              </Animated.View>
+            </LinearGradient>
           </View>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.springify().damping(18).stiffness(220)}>
+        <Animated.View
+          entering={FadeInDown.delay(60).springify().damping(18).stiffness(220)}
+          style={styles.shadowWrapper}
+        >
           <View style={styles.heroSds}>
             <LinearGradient
               key={selectedChild.id}
@@ -605,7 +631,10 @@ const DashboardScreen: React.FC = () => {
           </View>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.springify().damping(18).stiffness(220)}>
+        <Animated.View
+          entering={FadeInDown.delay(100).springify().damping(18).stiffness(220)}
+          style={[styles.shadowWrapper, styles.shadowWrapperHoriz]}
+        >
           <View style={styles.sectionTight}>
             <WeeklyAspectProgressChart
               aspects={DASHBOARD_RATING_ASPECTS}
@@ -614,7 +643,10 @@ const DashboardScreen: React.FC = () => {
           </View>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.springify().damping(18).stiffness(220)}>
+        <Animated.View
+          entering={FadeInDown.delay(140).springify().damping(18).stiffness(220)}
+          style={[styles.shadowWrapper, styles.shadowWrapperHoriz]}
+        >
           <View style={styles.sectionTight}>
             <AIInsightsCard payload={aiInsightsPayload} />
           </View>
@@ -722,6 +754,17 @@ const DashboardScreen: React.FC = () => {
         onSave={handleAspectRatingSave}
         onSaveAndNext={handleAspectRatingSaveAndNext}
         onVoiceNotePress={handleVoiceNotePlaceholder}
+        language={ratingLang}
+      />
+
+      <LanguagePickerSheet
+        visible={langPickerVisible}
+        selected={ratingLang}
+        onSelect={handleLanguageSelected}
+        onClose={() => {
+          setLangPickerVisible(false);
+          setPendingAspect(null);
+        }}
       />
 
 
@@ -1046,8 +1089,8 @@ const styles = StyleSheet.create({
   },
   /** SDS card below mission — keep vertical rhythm tight so behaviour + mission stay above the fold. */
   heroSds: {
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.md,
+    // paddingHorizontal: spacing.lg,
+    // marginBottom: spacing.md,
   },
   sdsCard: {
     borderRadius: borderRadius.xl,
@@ -1174,6 +1217,43 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: colors.ink,
+  },
+  shadowWrapper: {
+    borderRadius: borderRadius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    backgroundColor: colors.surface,
+    ...Platform.select({
+      ios: {
+        shadowColor: colors.ink,
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.07,
+        shadowRadius: 8,
+      },
+      android: { elevation: 2 },
+      default: {},
+    }),
+  },
+  shadowWrapper2: {
+    // borderRadius: borderRadius.xl,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: colors.ink,
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.07,
+        shadowRadius: 8,
+      },
+      android: { elevation: 2 },
+      default: {},
+    }),
+  },
+  shadowWrapperHoriz: {
+    // Extra horizontal inset variant — no extra margin needed beyond the default.
+    marginHorizontal: spacing.lg,
   },
   section: {
     marginBottom: spacing.md,
@@ -1305,21 +1385,10 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
   },
   missionCardOuter: {
-    marginHorizontal: spacing.lg,
     borderRadius: borderRadius.xl,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(17, 17, 17, 0.06)',
-    ...Platform.select({
-      ios: {
-        shadowColor: colors.ink,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.05,
-        shadowRadius: 12,
-      },
-      android: { elevation: 2 },
-      default: {},
-    }),
+    borderColor: 'rgba(17, 17, 17, 0.06)'
   },
   missionGradient: {
     paddingTop: spacing.md,
@@ -1433,17 +1502,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255, 255, 255, 0.95)',
-    zIndex: 1,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-      },
-      android: { elevation: 1 },
-      default: {},
-    }),
+    zIndex: 1
   },
   missionPanelHeader: {
     flexDirection: 'row',
@@ -1499,7 +1558,7 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
       },
       android: {
-        elevation: 4,
+        elevation: 3,
       },
       default: {},
     }),
@@ -1609,7 +1668,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'flex-start',
   },
-  ratingAspectCard: {
+  ratingAspectShadowWrapper: {
     borderRadius: borderRadius.large,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
@@ -1623,6 +1682,11 @@ const styles = StyleSheet.create({
       android: { elevation: 2 },
       default: {},
     }),
+  },
+  ratingAspectCard: {
+    borderRadius: borderRadius.large,
+    overflow: 'hidden',
+    flex: 1,
   },
   ratingAspectCardPressed: {
     opacity: 0.94,

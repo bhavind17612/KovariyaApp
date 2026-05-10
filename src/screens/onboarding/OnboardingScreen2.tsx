@@ -136,6 +136,7 @@ export function OnboardingScreen2({ navigation }: Props) {
 										const isActive = selectedRole === role;
 										return (
 											<Pressable
+												android_ripple={{ color: 'rgba(124, 106, 232, 0.6)', foreground: true }}
 												key={role}
 												style={[styles.roleChip, isActive ? styles.roleChipActive : null]}
 												onPress={() => {
@@ -180,7 +181,7 @@ export function OnboardingScreen2({ navigation }: Props) {
 								/>
 							</Animated.View>
 
-							<Animated.View entering={FadeInDown.duration(400).delay(300)} style={styles.sectionMargin}>
+							{/* <Animated.View entering={FadeInDown.duration(400).delay(300)} style={styles.sectionMargin}>
 								<Text style={styles.label}>Language</Text>
 								<Pressable
 									style={styles.langSelector}
@@ -227,7 +228,7 @@ export function OnboardingScreen2({ navigation }: Props) {
 										})}
 									</Animated.View>
 								) : null}
-							</Animated.View>
+							</Animated.View> */}
 
 						</View>
 					</ScrollView>
@@ -237,6 +238,7 @@ export function OnboardingScreen2({ navigation }: Props) {
 						style={[styles.stickyBottom, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}
 					>
 						<Pressable
+							android_ripple={{ color: 'rgba(255, 255, 255, 0.6)', foreground: true }}
 							style={({ pressed }) => [
 								styles.ctaBtn,
 								!isFormValid && !isLoading ? styles.ctaBtnDisabled : null,
@@ -309,6 +311,8 @@ const styles = StyleSheet.create({
 		backgroundColor: colors.surfaceMuted,
 		borderWidth: 2,
 		borderColor: 'transparent',
+		overflow: 'hidden',
+		...shadows.small,
 	},
 	roleChipActive: {
 		backgroundColor: colors.lavenderSoft,
@@ -372,6 +376,7 @@ const styles = StyleSheet.create({
 		justifyContent: 'center',
 		gap: spacing.sm,
 		...shadows.medium,
+		overflow: 'hidden'
 	},
 	ctaBtnDisabled: {
 		backgroundColor: colors.surfaceMuted,

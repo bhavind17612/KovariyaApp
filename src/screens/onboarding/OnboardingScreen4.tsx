@@ -121,6 +121,7 @@ export function OnboardingScreen4({ navigation }: Props) {
 	const [pinState, setPinState] = useState<'idle' | 'match' | 'error'>('idle');
 	const [showConfetti, setShowConfetti] = useState(false);
 	const [isLoggingIn, setIsLoggingIn] = useState(false);
+	const [hasAcceptedPrivacy, setHasAcceptedPrivacy] = useState(false);
 	const hiddenInputRef = useRef<TextInput>(null);
 
 	const screenX = useSharedValue(0);
@@ -139,7 +140,8 @@ export function OnboardingScreen4({ navigation }: Props) {
 	}));
 
 	const currentPin = step === 'set' ? pin : confirmPin;
-	const isComplete = step === 'confirm' && pinState === 'match' && confirmPin.length === 4;
+	const isPinConfirmed = step === 'confirm' && pinState === 'match' && confirmPin.length === 4;
+	const isComplete = isPinConfirmed && hasAcceptedPrivacy;
 
 	// Keep input focused seamlessly
 	const focusInput = () => hiddenInputRef.current?.focus();
@@ -303,38 +305,101 @@ export function OnboardingScreen4({ navigation }: Props) {
 									</View>
 								</View>
 							</Animated.View>
+
+							{step === 'confirm' && (
+								<Animated.View entering={FadeInDown.duration(400).delay(300)} style={styles.sectionMargin}>
+									<View style={styles.privacyCard}>
+										<View style={styles.privacyHeader}>
+											<View style={styles.privacyIconWrap}>
+												<Icon name="policy" size={18} color={colors.primary} />
+											</View>
+											<View style={styles.privacyHeaderText}>
+												<Text style={styles.privacyTitle}>Privacy policy and data usage</Text>
+												<Text style={styles.privacySubtitle}>
+													We only use your data to set up your account and personalize your child&apos;s dashboard.
+												</Text>
+											</View>
+										</View>
+
+										<View style={styles.privacyList}>
+											<View style={styles.privacyRow}>
+												<Icon name="check-circle" size={16} color={colors.growth} />
+												<Text style={styles.privacyRowText}>Child profile details are used to tailor content, goals, and age-based insights.</Text>
+											</View>
+											<View style={styles.privacyRow}>
+												<Icon name="check-circle" size={16} color={colors.growth} />
+												<Text style={styles.privacyRowText}>Your login PIN secures quick access on this device and helps protect account access.</Text>
+											</View>
+											<View style={styles.privacyRow}>
+												<Icon name="check-circle" size={16} color={colors.growth} />
+												<Text style={styles.privacyRowText}>You can review or manage privacy settings later from the Profile section.</Text>
+											</View>
+										</View>
+
+										<Pressable
+											onPress={() => {
+												setHasAcceptedPrivacy((prev) => !prev);
+												Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+											}}
+											style={({ pressed }) => [
+												styles.checkboxRow,
+												hasAcceptedPrivacy ? styles.checkboxRowActive : null,
+												pressed ? styles.checkboxRowPressed : null,
+											]}
+											accessibilityRole="checkbox"
+											accessibilityState={{ checked: hasAcceptedPrivacy }}
+										>
+											<View style={[styles.checkboxBox, hasAcceptedPrivacy ? styles.checkboxBoxChecked : null]}>
+												{hasAcceptedPrivacy ? (
+													<Icon name="check" size={16} color={colors.surface} />
+												) : null}
+											</View>
+											<Text style={styles.checkboxLabel}>
+												I accept the Privacy Policy and agree to how my account and child profile data will be used.
+											</Text>
+										</Pressable>
+
+										<Text style={styles.privacyFootnote}>
+											Acceptance is required to finish setup and continue to your dashboard.
+										</Text>
+									</View>
+								</Animated.View>
+							)}
 						</View>
 					</ScrollView>
 
 					{/* CTA only shown during confirm step – set step auto-advances */}
 					{step === 'confirm' && (
-						<Animated.View
-							entering={FadeInUp.duration(400).delay(350)}
-							style={[styles.stickyBottom, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}
-						>
-							<Pressable
-								style={({ pressed }) => [
-									styles.ctaBtn,
-									!isComplete ? styles.ctaBtnDisabled : null,
-									(pressed && isComplete) ? styles.ctaBtnPressed : null
-								]}
-								onPress={goNext}
-								disabled={!isComplete || isLoggingIn}
+						<View
+							style={[styles.stickyBottom, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
+							<Animated.View
+								entering={FadeInUp.duration(400).delay(350)}
+								style={styles.ctaAnimBtn}
 							>
-								{isLoggingIn ? (
-									<ActivityIndicator size="small" color={colors.surface} />
-								) : (
-									<>
-										<Text style={[styles.ctaText, !isComplete ? styles.ctaTextDisabled : null]}>
-											Finish Setup
-										</Text>
-										{isComplete && (
-											<Icon name="celebration" size={20} color={colors.surface} />
-										)}
-									</>
-								)}
-							</Pressable>
-						</Animated.View>
+								<Pressable
+									android_ripple={{ color: 'rgba(255, 255, 255, 0.6)', foreground: true }}
+									style={({ pressed }) => [
+										styles.ctaBtn,
+										!isComplete ? styles.ctaBtnDisabled : null
+									]}
+									onPress={goNext}
+									disabled={!isComplete || isLoggingIn}
+								>
+									{isLoggingIn ? (
+										<ActivityIndicator size="small" color={colors.surface} />
+									) : (
+										<>
+											<Text style={[styles.ctaText, !isComplete ? styles.ctaTextDisabled : null]}>
+												Finish Setup
+											</Text>
+											{isComplete && (
+												<Icon name="celebration" size={20} color={colors.surface} />
+											)}
+										</>
+									)}
+								</Pressable>
+							</Animated.View>
+						</View>
 					)}
 
 				</Animated.View>
@@ -418,6 +483,92 @@ const styles = StyleSheet.create({
 	},
 	infoBannerText: { flex: 1, ...textStyles.caption, color: colors.primary, fontWeight: '500', lineHeight: 18 },
 
+	privacyCard: {
+		backgroundColor: colors.surfaceMuted,
+		borderRadius: borderRadius.large,
+		padding: spacing.md,
+		gap: spacing.md,
+		borderWidth: 1,
+		borderColor: colors.border,
+	},
+	privacyHeader: {
+		flexDirection: 'row',
+		alignItems: 'flex-start',
+		gap: spacing.sm,
+	},
+	privacyIconWrap: {
+		width: 34,
+		height: 34,
+		borderRadius: borderRadius.full,
+		backgroundColor: colors.lavenderSoft,
+		alignItems: 'center',
+		justifyContent: 'center',
+	},
+	privacyHeaderText: { flex: 1, gap: 2 },
+	privacyTitle: {
+		...textStyles.bodyLarge,
+		color: colors.textPrimary,
+		fontWeight: '700',
+	},
+	privacySubtitle: {
+		...textStyles.caption,
+		color: colors.textSecondary,
+		lineHeight: 18,
+	},
+	privacyList: {
+		gap: spacing.sm,
+	},
+	privacyRow: {
+		flexDirection: 'row',
+		alignItems: 'flex-start',
+		gap: spacing.sm,
+	},
+	privacyRowText: {
+		flex: 1,
+		...textStyles.caption,
+		color: colors.textSecondary,
+		lineHeight: 18,
+	},
+	checkboxRow: {
+		flexDirection: 'row',
+		alignItems: 'flex-start',
+		gap: spacing.sm,
+		padding: spacing.sm,
+		borderRadius: borderRadius.medium,
+	},
+	checkboxRowActive: {
+		backgroundColor: colors.lavenderSoft,
+	},
+	checkboxRowPressed: {
+		opacity: 0.9,
+	},
+	checkboxBox: {
+		width: 22,
+		height: 22,
+		borderRadius: 6,
+		borderWidth: 1.5,
+		borderColor: colors.border,
+		backgroundColor: colors.surface,
+		alignItems: 'center',
+		justifyContent: 'center',
+		marginTop: 1,
+	},
+	checkboxBoxChecked: {
+		backgroundColor: colors.primary,
+		borderColor: colors.primary,
+	},
+	checkboxLabel: {
+		flex: 1,
+		...textStyles.bodyMedium,
+		color: colors.textPrimary,
+		lineHeight: 20,
+	},
+	privacyFootnote: {
+		...textStyles.caption,
+		color: colors.textSecondary,
+		lineHeight: 18,
+	},
+
 	stickyBottom: {
 		position: 'absolute',
 		bottom: 0,
@@ -429,13 +580,17 @@ const styles = StyleSheet.create({
 		borderTopWidth: 1,
 		borderTopColor: colors.border,
 	},
+	ctaAnimBtn: {
+		...shadows.medium,
+		borderRadius: borderRadius.large,
+	},
 	ctaBtn: {
-		backgroundColor: colors.primary, borderRadius: borderRadius.large,
+		backgroundColor: colors.primary,
+		borderRadius: borderRadius.large,
 		height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-		gap: spacing.sm, ...shadows.medium,
+		gap: spacing.sm,
 	},
 	ctaBtnDisabled: { backgroundColor: colors.surfaceMuted, shadowOpacity: 0 },
-	ctaBtnPressed: { opacity: 0.85 },
 	ctaText: { ...textStyles.button, color: colors.surface, fontSize: 16 },
 	ctaTextDisabled: { color: colors.textMuted },
 });

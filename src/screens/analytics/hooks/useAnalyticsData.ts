@@ -53,8 +53,13 @@ export function useAnalyticsData() {
 
 	/* ── Heatmap state ── */
 	const now = new Date();
-	const [heatmapYear, setHeatmapYear] = useState(now.getFullYear());
-	const [heatmapMonth, setHeatmapMonth] = useState(now.getMonth());
+	// Stable initialiser — runs once
+	const [heatmapYear, setHeatmapYear] = useState(
+		() => new Date().getFullYear()
+	);
+	const [heatmapMonth, setHeatmapMonth] = useState(
+		() => new Date().getMonth()
+	);
 
 	const heatmapData = useMemo(
 		() => getDailyBehaviourScores(selectedChild.id, heatmapYear, heatmapMonth),

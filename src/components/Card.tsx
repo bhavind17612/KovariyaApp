@@ -24,7 +24,8 @@ export const Card = React.memo(function Card({
 
     switch (variant) {
       case 'elevated':
-        return { ...baseStyle, ...shadows.soft };
+        // Shadow intentionally omitted — must live on the outer Animated.View (shadowWrapper pattern).
+        return baseStyle;
       case 'outlined':
         return { ...baseStyle, borderWidth: 1, borderColor: colors.border };
       default:

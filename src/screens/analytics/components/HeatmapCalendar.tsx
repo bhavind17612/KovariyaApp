@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
+import { View, Text, Pressable, StyleSheet, useWindowDimensions, Platform } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
@@ -18,6 +18,8 @@ interface HeatmapCalendarProps {
 	month: number;
 	onPrevMonth: () => void;
 	onNextMonth: () => void;
+	/** Called with date string (YYYY-MM-DD) and its score when user taps a cell */
+	onDayPress?: (date: string, score: number | null) => void;
 }
 
 /* ═══════════════════════════════════════════════════════════════════ */
@@ -44,6 +46,7 @@ const HeatmapCalendar: React.FC<HeatmapCalendarProps> = ({
 	month,
 	onPrevMonth,
 	onNextMonth,
+	onDayPress,
 }) => {
 	const { width: windowWidth } = useWindowDimensions();
 	const cardInnerWidth = windowWidth - spacing.xl * 2 - spacing.md * 2;
@@ -68,6 +71,7 @@ const HeatmapCalendar: React.FC<HeatmapCalendarProps> = ({
 	return (
 		<Animated.View
 			entering={FadeInDown.delay(240).springify().damping(18).stiffness(220)}
+			style={[s.shadowWrapper, { marginBottom: spacing.sm }]}
 		>
 			<Card variant="elevated" padding={spacing.md} style={s.heatmapCard}>
 				{/* Header */}
@@ -111,22 +115,29 @@ const HeatmapCalendar: React.FC<HeatmapCalendarProps> = ({
 								}
 								const bg = heatmapColor(cell.score);
 								const dayNum = parseInt(cell.date.split('-')[2], 10);
+								const isToday = cell.date === new Date().toISOString().split('T')[0];
 								return (
-									<View
+									<Pressable
 										key={cell.date}
-										style={[
+										onPress={() => onDayPress?.(cell.date, cell.score)}
+										android_ripple={{ color: 'rgba(255,255,255,0.35)', borderless: false }}
+										style={({ pressed }) => [
 											s.dayCell,
 											{
 												width: cellSize,
 												height: cellSize,
 												backgroundColor: bg,
 											},
+											isToday && s.dayCellToday,
+											pressed && s.dayCellPressed,
 										]}
+										accessibilityRole="button"
+										accessibilityLabel={`View logs for ${cell.date}`}
 									>
 										<Text style={[s.dayCellText, cell.score === null && s.dayCellTextMuted]}>
 											{dayNum}
 										</Text>
-									</View>
+									</Pressable>
 								);
 							})}
 							{row.length < 7 &&
@@ -159,8 +170,27 @@ export default React.memo(HeatmapCalendar);
 /*  Styles                                                            */
 /* ═══════════════════════════════════════════════════════════════════ */
 const s = StyleSheet.create({
+	shadowWrapper: {
+		backgroundColor: colors.surface,
+		borderRadius: borderRadius.xl,
+		borderWidth: StyleSheet.hairlineWidth,
+		borderColor: colors.border,
+		overflow: 'hidden',
+		marginVertical: spacing.sm,
+		// padding: spacing.md,
+		...Platform.select({
+			ios: {
+				shadowColor: colors.ink,
+				shadowOffset: { width: 0, height: 3 },
+				shadowOpacity: 0.07,
+				shadowRadius: 8,
+			},
+			android: { elevation: 2 },
+			default: {},
+		}),
+	},
 	heatmapCard: {
-		marginBottom: spacing.sm,
+		// marginBottom: spacing.sm,
 		backgroundColor: 'rgba(255,255,255,0.96)',
 		borderWidth: StyleSheet.hairlineWidth,
 		borderColor: 'rgba(17,17,17,0.05)',
@@ -250,6 +280,15 @@ const s = StyleSheet.create({
 		justifyContent: 'center',
 		borderWidth: StyleSheet.hairlineWidth,
 		borderColor: 'rgba(255,255,255,0.4)',
+		overflow: 'hidden',
+	},
+	dayCellToday: {
+		borderWidth: 2,
+		borderColor: colors.primary,
+	},
+	dayCellPressed: {
+		opacity: 0.78,
+		transform: [{ scale: 0.93 }],
 	},
 	dayCellText: {
 		fontSize: 10,

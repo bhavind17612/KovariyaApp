@@ -204,19 +204,19 @@ export function OnboardingScreen1({ navigation }: Props) {
         >
           {/* Back button — only visible when in OTP sub-screen */}
           {showOtp && (
-            <Pressable style={styles.backBtn} onPress={handleBack}>
-              <View style={styles.backCircle}>
-                <Icon name="arrow-back" size={20} color={colors.textPrimary} />
-              </View>
+            <Pressable style={styles.backBtn} onPress={handleBack} hitSlop={12}>
+              <Icon name="arrow-back" size={24} color={colors.textPrimary} />
             </Pressable>
           )}
           {/* Spacer when not showing back button to keep layout consistent */}
           {!showOtp && <View style={styles.backBtnSpacer} />}
 
           {/* Illustration */}
-          <Animated.View entering={FadeInDown.duration(500).delay(100)}>
-            <IllustrationCard />
-          </Animated.View>
+          {!showOtp && (
+            <Animated.View entering={FadeInDown.duration(500).delay(100)}>
+              <IllustrationCard />
+            </Animated.View>
+          )}
 
           {/* Relative container for slide transitions */}
           <View style={{ flex: 1 }}>
@@ -265,9 +265,10 @@ export function OnboardingScreen1({ navigation }: Props) {
               </Animated.View>
 
               {/* Send OTP CTA */}
-              <Animated.View entering={FadeInUp.duration(400).delay(400)}>
+              <Animated.View entering={FadeInUp.duration(400).delay(400)} style={styles.ctaAnimBtn}>
                 <Pressable
-                  style={({ pressed }) => [styles.ctaBtn, { opacity: pressed ? 0.85 : 1 }]}
+                  android_ripple={{ color: 'rgba(255, 255, 255, 0.6)', foreground: true }}
+                  style={styles.ctaBtn}
                   onPress={handleSendOtp}
                   disabled={sendingOtp}
                 >
@@ -329,18 +330,21 @@ export function OnboardingScreen1({ navigation }: Props) {
               </View>
 
               {/* Verify CTA */}
-              <Pressable
-                style={({ pressed }) => [styles.ctaBtn, { opacity: pressed ? 0.85 : 1 }]}
-                onPress={proceedToNext}
-              >
-                <Text style={styles.ctaText}>Verify & Continue</Text>
-                <Icon name="arrow-forward" size={20} color={colors.surface} />
-              </Pressable>
+              <Animated.View entering={FadeInUp.duration(400).delay(400)} style={styles.ctaAnimBtn}>
+                <Pressable
+                  android_ripple={{ color: 'rgba(255, 255, 255, 0.6)', foreground: true }}
+                  style={styles.ctaBtn}
+                  onPress={proceedToNext}
+                >
+                  <Text style={styles.ctaText}>Verify & Continue</Text>
+                  <Icon name="arrow-forward" size={20} color={colors.surface} />
+                </Pressable>
+              </Animated.View>
             </Animated.View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </SafeAreaView >
   );
 }
 
@@ -350,13 +354,6 @@ const styles = StyleSheet.create({
 
   backBtn: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, marginBottom: spacing.xs },
   backBtnSpacer: { height: 40 + spacing.sm + spacing.xs, marginBottom: 0 },
-  backCircle: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: colors.surface,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: colors.border,
-    ...shadows.small,
-  },
 
   // Illustration
   illusCard: {
@@ -381,7 +378,7 @@ const styles = StyleSheet.create({
   illusSub: { ...textStyles.bodyMedium, color: colors.textSecondary, marginTop: 2 },
 
   // Form
-  formBlock: { paddingHorizontal: spacing.md },
+  formBlock: { paddingHorizontal: spacing.md, paddingTop: spacing.md },
 
   // Tab toggle
   tabContainer: { marginBottom: spacing.lg },
@@ -457,6 +454,10 @@ const styles = StyleSheet.create({
   ccOptionCode: { ...textStyles.bodyMedium, color: colors.textSecondary },
 
   // CTA
+  ctaAnimBtn: {
+    ...shadows.medium,
+    borderRadius: borderRadius.large,
+  },
   ctaBtn: {
     backgroundColor: colors.primary,
     borderRadius: borderRadius.large,
@@ -465,7 +466,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    ...shadows.medium,
+    overflow: 'hidden',
   },
   ctaText: { ...textStyles.button, color: colors.surface, fontSize: 16 },
 

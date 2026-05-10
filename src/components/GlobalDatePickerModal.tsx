@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Dimensions,
   Modal,
   Pressable,
@@ -72,6 +73,8 @@ export const GlobalDatePickerModal = React.memo(function GlobalDatePickerModal({
   const [selectedDate, setSelectedDate] = useState<DateType>(initialDate ?? new Date());
   const [viewAnchor, setViewAnchor] = useState(() => getInitialDate(initialDate).startOf('month'));
   const [pickerMode, setPickerMode] = useState<PickerMode>('calendar');
+  const [month, setMonth] = useState(new Date().getMonth());
+  const [year, setYear] = useState(new Date().getFullYear());
   const [yearPageStart, setYearPageStart] = useState(() =>
     getYearPageStart(getInitialDate(initialDate).year()),
   );
@@ -119,7 +122,25 @@ export const GlobalDatePickerModal = React.memo(function GlobalDatePickerModal({
   const shiftView = useCallback(
     (direction: 1 | -1) => {
       if (pickerMode === 'calendar') {
-        setViewAnchor((prev) => prev.add(direction, 'month'));
+        if(direction == 1){
+         console.log("next");
+            setMonth((prev) => {
+              console.log(prev)
+                // if (prev === 11) {
+                //   setYear((y) => y + 1);
+                //   return prev + 1;
+                // }
+                return prev + 1;
+              });
+            }else{
+              setMonth((prev) => {
+                // if (prev === 0) {
+                //   setYear((y) => y - 1);
+                //   return 11;
+                // }
+                return prev - 1;
+              });
+            }
       } else {
         setYearPageStart((prev) => prev + direction * YEARS_PER_PAGE);
       }
@@ -127,6 +148,15 @@ export const GlobalDatePickerModal = React.memo(function GlobalDatePickerModal({
     },
     [pickerMode],
   );
+
+  const handleCalendarMonthChange = useCallback((month: number) => {
+    setMonth(month);
+  }, []);
+
+  const handleCalendarYearChange = useCallback((year: number) => {
+    // setViewAnchor((prev) => prev.year(year).startOf('month'));
+    setYear(year);
+  }, []);
 
   const handleConfirm = useCallback(() => {
     if (selectedDate) {
@@ -163,7 +193,7 @@ export const GlobalDatePickerModal = React.memo(function GlobalDatePickerModal({
             Math.abs(event.translationX) > SWIPE_DISTANCE_THRESHOLD ||
             Math.abs(event.velocityX) > SWIPE_VELOCITY_THRESHOLD;
 
-          if (shouldShift) {
+          if (shouldShift) {            
             runOnJS(shiftView)(event.translationX < 0 ? 1 : -1);
           }
 
@@ -196,7 +226,28 @@ export const GlobalDatePickerModal = React.memo(function GlobalDatePickerModal({
   const pickerStyles = useMemo(
     () => ({
       ...defaultStyles,
-      header: { marginBottom: spacing.sm },
+      header: { 
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: spacing.sm,
+      },
+      button_prev: {
+        width: spacing.xl,
+        height: spacing.xl,
+        borderRadius: borderRadius.full,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.lavenderSoft,
+      },
+      button_next: {
+        width: spacing.xl,
+        height: spacing.xl,
+        borderRadius: borderRadius.full,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.lavenderSoft,
+      },
       month_selector_label: {
         fontSize: typography.fontSize.lg,
         fontWeight: typography.fontWeight.semibold,
@@ -214,6 +265,9 @@ export const GlobalDatePickerModal = React.memo(function GlobalDatePickerModal({
         fontWeight: typography.fontWeight.semibold,
         color: colors.textMuted,
         textTransform: 'uppercase' as const,
+      },
+      selected_year:{
+        backgroundColor: colors.primary
       },
       day: { borderRadius: borderRadius.full },
       day_cell: { padding: 2 },
@@ -297,7 +351,7 @@ export const GlobalDatePickerModal = React.memo(function GlobalDatePickerModal({
               </Pressable>
             </View>
 
-            <View style={styles.modeRow}>
+            {/* <View style={styles.modeRow}>
               <Pressable
                 onPress={() => setPickerMode('calendar')}
                 style={[
@@ -330,9 +384,9 @@ export const GlobalDatePickerModal = React.memo(function GlobalDatePickerModal({
                   Year
                 </Text>
               </Pressable>
-            </View>
+            </View> */}
 
-            <View style={styles.navigatorRow}>
+            {/* <View style={styles.navigatorRow}>
               <Pressable onPress={() => shiftView(-1)} style={styles.navBtn} hitSlop={8}>
                 <Icon name="chevron-left" size={22} color={colors.primary} />
               </Pressable>
@@ -344,58 +398,58 @@ export const GlobalDatePickerModal = React.memo(function GlobalDatePickerModal({
               <Pressable onPress={() => shiftView(1)} style={styles.navBtn} hitSlop={8}>
                 <Icon name="chevron-right" size={22} color={colors.primary} />
               </Pressable>
-            </View>
+            </View> */}
 
-            <GestureDetector gesture={panGesture}>
-              <Animated.View style={swipeStyle}>
-                {pickerMode === 'calendar' ? (
-                  <DateTimePicker
-                    key={`calendar-${viewAnchor.format('YYYY-MM')}`}
-                    mode="single"
-                    date={selectedDate}
-                    onChange={({ date }) => setSelectedDate(date)}
-                    minDate={minimumDate}
-                    maxDate={maximumDate}
-                    month={viewAnchor.month()}
-                    year={viewAnchor.year()}
-                    styles={pickerStyles}
-                    showOutsideDays
-                    firstDayOfWeek={0}
-                    containerHeight={320}
-                  />
-                ) : (
-                  <View style={styles.yearGrid}>
-                    {yearItems.map((year) => {
-                      const isDisabled = year < minYear || year > maxYear;
-                      const isActive = year === selectedYear;
+            
+            <Animated.View style={swipeStyle}>
+              {pickerMode === 'calendar' ? (
+                <DateTimePicker
+                  mode="single"
+                  date={selectedDate}
+                  onChange={({ date }) => setSelectedDate(date)}
+                  minDate={minimumDate}
+                  maxDate={maximumDate}
+                  month={month}
+                  year={year}
+                  // onMonthChange={handleCalendarMonthChange}
+                  // onYearChange={handleCalendarYearChange}
+                  styles={pickerStyles}
+                  showOutsideDays
+                  firstDayOfWeek={0}
+                  containerHeight={320}
+                />
+              ) : (
+                <View style={styles.yearGrid}>
+                  {yearItems.map((year) => {
+                    const isDisabled = year < minYear || year > maxYear;
+                    const isActive = year === selectedYear;
 
-                      return (
-                        <Pressable
-                          key={year}
-                          disabled={isDisabled}
-                          onPress={() => handleYearSelect(year)}
+                    return (
+                      <Pressable
+                        key={year}
+                        disabled={isDisabled}
+                        onPress={() => handleYearSelect(year)}
+                        style={[
+                          styles.yearChip,
+                          isActive ? styles.yearChipActive : null,
+                          isDisabled ? styles.yearChipDisabled : null,
+                        ]}
+                      >
+                        <Text
                           style={[
-                            styles.yearChip,
-                            isActive ? styles.yearChipActive : null,
-                            isDisabled ? styles.yearChipDisabled : null,
+                            styles.yearChipText,
+                            isActive ? styles.yearChipTextActive : null,
+                            isDisabled ? styles.yearChipTextDisabled : null,
                           ]}
                         >
-                          <Text
-                            style={[
-                              styles.yearChipText,
-                              isActive ? styles.yearChipTextActive : null,
-                              isDisabled ? styles.yearChipTextDisabled : null,
-                            ]}
-                          >
-                            {year}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                )}
-              </Animated.View>
-            </GestureDetector>
+                          {year}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
+            </Animated.View>
 
             <View style={styles.footer}>
               <Pressable
@@ -410,6 +464,11 @@ export const GlobalDatePickerModal = React.memo(function GlobalDatePickerModal({
                   styles.footerPrimary,
                   pressed && styles.btnPressed,
                 ]}
+                android_ripple={{
+                  color: colors.primaryLight,  // uses your theme color
+                  borderless: true,            // circular ripple (matches the round navBtn)
+                  radius: 18,                  // matches the 36×36 button size
+                }}
               >
                 <Text style={styles.footerDone}>Confirm</Text>
               </Pressable>
