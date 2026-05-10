@@ -92,7 +92,7 @@ const GradeSheet = ({
 			<Animated.View style={[styles.gradeSheet, sheetStyle]}>
 				{/* <View style={styles.pickerHandle} /> */}
 				<View style={styles.gradeSheetHeader}>
-					<Text style={styles.gradeSheetTitle}>Select Class</Text>
+				<Text style={styles.gradeSheetTitle}>Select Standard</Text>
 					<Pressable onPress={onClose} style={styles.gradeSheetClose}>
 						<Icon name="close" size={22} color={colors.textSecondary} />
 					</Pressable>
@@ -126,6 +126,7 @@ const SchoolSheet = ({
 	onClose,
 	schools,
 	onAddSchool,
+	title = 'School',
 }: {
 	visible: boolean;
 	selected: string;
@@ -133,6 +134,7 @@ const SchoolSheet = ({
 	onClose: () => void;
 	schools: string[];
 	onAddSchool: (s: string) => void;
+	title?: string;
 }) => {
 	const sheetY = useSharedValue(SH);
 	const [searchQuery, setSearchQuery] = useState('');
@@ -155,7 +157,7 @@ const SchoolSheet = ({
 			<KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end' }]} pointerEvents="box-none">
 				<Animated.View style={[styles.gradeSheet, sheetStyle]}>
 					<View style={styles.gradeSheetHeader}>
-						<Text style={styles.gradeSheetTitle}>Select School</Text>
+						<Text style={styles.gradeSheetTitle}>Select {title}</Text>
 						<Pressable onPress={onClose} style={styles.gradeSheetClose}>
 							<Icon name="close" size={22} color={colors.textSecondary} />
 						</Pressable>
@@ -165,7 +167,7 @@ const SchoolSheet = ({
 						<Icon name="search" size={20} color={colors.textMuted} />
 						<TextInput
 							style={styles.searchInput}
-							placeholder="Search or add school..."
+							placeholder={`Search or add ${title.toLowerCase()}...`}
 							value={searchQuery}
 							onChangeText={setSearchQuery}
 							placeholderTextColor={colors.textMuted}
@@ -216,9 +218,11 @@ const GENDERS = [
 	{ key: 'female', label: 'Female', emoji: '👧' },
 ];
 
-interface Props { navigation: any; }
+interface Props { navigation: any; route: any; }
 
-export function OnboardingScreen3({ navigation }: Props) {
+export function OnboardingScreen3({ navigation, route }: Props) {
+	const onboardType: 'school' | 'institute' = route?.params?.onboardType ?? 'school';
+	const isSchool = onboardType === 'school';
 	const insets = useSafeAreaInsets();
 	const [childName, setChildName] = useState('');
 	const [dobIso, setDobIso] = useState(() => toIsoDate(new Date(currentYear - 8, 0, 1)));
@@ -226,8 +230,13 @@ export function OnboardingScreen3({ navigation }: Props) {
 	const [showGradeSheet, setShowGradeSheet] = useState(false);
 	const [school, setSchool] = useState('');
 	const [showSchoolSheet, setShowSchoolSheet] = useState(false);
-	const [schools, setSchools] = useState<string[]>(['Delhi Public School', 'Kendriya Vidyalaya', 'National Public School', 'Springdales School']);
+	const [schools, setSchools] = useState<string[]>(isSchool
+		? ['Delhi Public School', 'Kendriya Vidyalaya', 'National Public School', 'Springdales School']
+		: ['Byju\'s Classes', 'Allen Career Institute', 'Kumon', 'Vedantu Academy']
+	);
 	const [gender, setGender] = useState<string | null>(null);
+	const [classSec, setClassSec] = useState('');
+	const [batchDetails, setBatchDetails] = useState('');
 	const [isLoading, setIsLoading] = useState(false);
 
 	const ageYears = ageFromIsoDate(dobIso);
@@ -239,7 +248,11 @@ export function OnboardingScreen3({ navigation }: Props) {
 		opacity: interpolate(Math.abs(screenX.value), [0, SW], [1, 0]),
 	}));
 
-	const isFormValid = childName.trim().length > 0 && grade !== '' && school !== '' && gender !== null;
+	const isFormValid = childName.trim().length > 0
+		&& grade !== ''
+		&& school !== ''
+		&& gender !== null
+		&& (isSchool ? classSec.trim().length > 0 : batchDetails.trim().length > 0);
 
 	const goNext = () => {
 		if (!isFormValid || isLoading) return;
@@ -331,22 +344,47 @@ export function OnboardingScreen3({ navigation }: Props) {
 							</Animated.View>
 
 							<Animated.View entering={FadeInDown.duration(400).delay(200)} style={styles.sectionMargin}>
-								<Text style={styles.label}>Class</Text>
+								<Text style={styles.label}>Standard</Text>
 								<Pressable style={styles.inputWrap} onPress={() => { setShowGradeSheet(true); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
 									<Icon name="school" size={20} color={colors.textMuted} />
 									<Text style={[styles.inputText, !grade ? styles.inputTextMuted : null]}>
-										{grade || 'Select class…'}
+										{grade || 'Select standard…'}
 									</Text>
 									<Icon name="keyboard-arrow-down" size={20} color={colors.textSecondary} />
 								</Pressable>
 							</Animated.View>
 
-							<Animated.View entering={FadeInDown.duration(400).delay(250)} style={styles.sectionMargin}>
-								<Text style={styles.label}>School</Text>
+							{/* Conditional: Class/Section for school, Batch for institute */}
+							<Animated.View entering={FadeInDown.duration(400).delay(225)} style={styles.sectionMargin}>
+								{isSchool ? (
+									<InputField
+										label="Class / Section"
+										value={classSec}
+										onChangeText={setClassSec}
+										placeholder="e.g. 5-A or Section B"
+										autoCapitalize="characters"
+										autoCorrect={false}
+										leftIcon={<Icon name="class" size={20} color={colors.textMuted} />}
+									/>
+								) : (
+									<InputField
+										label="Batch Details"
+										value={batchDetails}
+										onChangeText={setBatchDetails}
+										placeholder="e.g. Morning Batch 2025"
+										autoCapitalize="words"
+										autoCorrect={false}
+										leftIcon={<Icon name="groups" size={20} color={colors.textMuted} />}
+									/>
+								)}
+							</Animated.View>
+
+							<Animated.View entering={FadeInDown.duration(400).delay(275)} style={styles.sectionMargin}>
+								<Text style={styles.label}>{isSchool ? 'School' : 'Institute'}</Text>
 								<Pressable style={styles.inputWrap} onPress={() => { openSchoolModal(); }}>
-									<Icon name="account-balance" size={20} color={colors.textMuted} />
+									<Icon name={isSchool ? 'account-balance' : 'apartment'} size={20} color={colors.textMuted} />
 									<Text style={[styles.inputText, !school ? styles.inputTextMuted : null]} numberOfLines={1}>
-										{school || 'Select your school…'}
+										{school || (isSchool ? 'Select your school…' : 'Select your institute…')}
 									</Text>
 									<Icon name="keyboard-arrow-down" size={20} color={colors.textSecondary} />
 								</Pressable>
@@ -428,6 +466,7 @@ export function OnboardingScreen3({ navigation }: Props) {
 				onClose={() => setShowSchoolSheet(false)}
 				schools={schools}
 				onAddSchool={(s) => setSchools(prev => [s, ...prev])}
+				title={isSchool ? 'School' : 'Institute'}
 			/>
 		</SafeAreaView>
 	);

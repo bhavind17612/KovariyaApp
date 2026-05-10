@@ -84,7 +84,9 @@ interface Props {
 }
 
 export function OnboardingScreen1({ navigation }: Props) {
-  const [tab, setTab] = useState<'school' | 'direct'>('school');
+  const [tab, setTab] = useState<'school' | 'institute'>('school');
+  const pillX = useSharedValue(0);
+  const pillStyle = useAnimatedStyle(() => ({ left: pillX.value }));
   const [schoolId, setSchoolId] = useState('');
   const [countryCode, setCountryCode] = useState(COUNTRY_CODES[0]);
   const [mobile, setMobile] = useState('');
@@ -119,8 +121,9 @@ export function OnboardingScreen1({ navigation }: Props) {
     return () => clearTimeout(id);
   }, [timer, timerActive]);
 
-  const switchTab = (t: 'school' | 'direct') => {
+  const switchTab = (t: 'school' | 'institute') => {
     setTab(t);
+    pillX.value = withTiming(t === 'school' ? 4 : SW / 2 - spacing.md - 2, { duration: 280 });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
@@ -167,7 +170,7 @@ export function OnboardingScreen1({ navigation }: Props) {
   }, [showOtp]);
 
   const proceedToNext = () => {
-    navigation.navigate('Onboarding2');
+    navigation.navigate('Onboarding2', { onboardType: tab });
     setTimeout(() => {
       mainX.value = 0;
       otpX.value = SW;
@@ -223,16 +226,29 @@ export function OnboardingScreen1({ navigation }: Props) {
             {/* Main Form */}
             <Animated.View style={[styles.formBlock, mainStyle]}>
               {/* Tab Toggle */}
+              <Animated.View entering={FadeInDown.duration(400).delay(200)} style={styles.tabContainer}>
+                <View style={styles.tabTrack}>
+                  <Animated.View style={[styles.tabPill, pillStyle]} />
+                  <Pressable style={styles.tabBtn} onPress={() => switchTab('school')}>
+                    <Icon name="school" size={16} color={tab === 'school' ? colors.surface : colors.textSecondary} style={{ marginRight: 5 }} />
+                    <Text style={[styles.tabText, tab === 'school' && styles.tabTextActive]}>School</Text>
+                  </Pressable>
+                  <Pressable style={styles.tabBtn} onPress={() => switchTab('institute')}>
+                    <Icon name="apartment" size={16} color={tab === 'institute' ? colors.surface : colors.textSecondary} style={{ marginRight: 5 }} />
+                    <Text style={[styles.tabText, tab === 'institute' && styles.tabTextActive]}>Institute</Text>
+                  </Pressable>
+                </View>
+              </Animated.View>
 
               <Animated.View entering={FadeInDown.duration(400).delay(300)} style={styles.fields}>
-                {/* School ID / Code */}
+                {/* School / Institute ID */}
                 <InputField
-                  label={tab === 'school' ? 'School ID' : 'Unique Code'}
-                  placeholder={tab === 'school' ? 'e.g. SCH-20045' : 'Enter your invite code'}
+                  label={tab === 'school' ? 'School ID' : 'Institute ID'}
+                  placeholder={tab === 'school' ? 'e.g. SCH-20045' : 'e.g. INST-30078'}
                   value={schoolId}
                   onChangeText={setSchoolId}
                   autoCapitalize="characters"
-                  leftIcon={<Icon name="business" size={20} color={colors.textMuted} />}
+                  leftIcon={<Icon name={tab === 'school' ? 'business' : 'apartment'} size={20} color={colors.textMuted} />}
                 />
 
                 {/* Mobile Number */}
@@ -398,7 +414,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.full,
     ...shadows.small,
   },
-  tabBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', zIndex: 1 },
+  tabBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', zIndex: 1 },
   tabText: { ...textStyles.bodyMedium, fontWeight: '600', color: colors.textSecondary },
   tabTextActive: { color: colors.surface },
 

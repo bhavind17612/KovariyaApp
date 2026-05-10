@@ -116,7 +116,6 @@ export const MENTOR_ASSIGNED_MISSIONS: MentorMission[] = [
       { label: 'Mission started', dateTime: '2026-03-27 16:20' },
       { label: 'Tutor notes shared with parent', dateTime: '2026-03-28 20:05' },
       { label: 'Evidence upload required every two days', dateTime: '2026-03-29 18:30' },
-      { label: 'Checkpoint with mentor pending', dateTime: '2026-04-01 17:00' },
     ],
     completionHistory: [
       { date: '2026-03-27', status: 'done', note: 'Worksheet uploaded' },

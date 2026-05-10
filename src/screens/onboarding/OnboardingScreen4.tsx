@@ -224,16 +224,7 @@ export function OnboardingScreen4({ navigation }: Props) {
 
 	return (
 		<SafeAreaView style={styles.safe} edges={['top']}>
-			<TextInput
-				ref={hiddenInputRef}
-				style={styles.hiddenInput}
-				keyboardType="number-pad"
-				maxLength={4}
-				caretHidden
-				value={currentPin}
-				onChangeText={handlePinChange}
-				autoFocus
-			/>
+
 
 			{showConfetti ? (
 				<View style={StyleSheet.absoluteFillObject} pointerEvents="none">
@@ -283,6 +274,16 @@ export function OnboardingScreen4({ navigation }: Props) {
 										/>
 									))}
 								</Pressable>
+								<TextInput
+									ref={hiddenInputRef}
+									style={styles.hiddenInput}
+									keyboardType="number-pad"
+									maxLength={4}
+									caretHidden
+									value={currentPin}
+									onChangeText={handlePinChange}
+									autoFocus
+								/>
 							</Animated.View>
 
 							<Animated.View entering={FadeInDown.delay(200)}>
@@ -412,7 +413,13 @@ const styles = StyleSheet.create({
 	safe: { flex: 1, backgroundColor: colors.surface },
 
 	hiddenInput: {
-		position: 'absolute', width: 0, height: 0, opacity: 0,
+		position: 'absolute',
+		top: 0,
+		left: 0,
+		right: 0,
+		bottom: 0,
+		opacity: 0,
+		fontSize: 1,
 	},
 
 	topNav: {

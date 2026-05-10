@@ -16,6 +16,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from './Button';
+import VoiceRecorderModal, { type VoiceRecordingResult } from './VoiceRecorderModal';
 import {
   colors,
   spacing,
@@ -55,7 +56,6 @@ type Props = {
   orderedAspects?: RatingAspectDefinition[];
   /** When provided with a following aspect in `orderedAspects`, enables seamless handoff after save. */
   onSaveAndNext?: (payload: AspectRatingPayload) => void;
-  onVoiceNotePress?: () => void;
   /** Language to display the sheet in. Defaults to English. */
   language?: SupportedLanguage;
 };
@@ -67,7 +67,6 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
   onSave,
   orderedAspects,
   onSaveAndNext,
-  onVoiceNotePress,
   language = 'en',
 }: Props) {
   const insets = useSafeAreaInsets();
@@ -84,15 +83,18 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
   const [scale, setScale] = useState<number | null>(null);
   const [reasonIds, setReasonIds] = useState<string[]>([]);
   const [note, setNote] = useState('');
-  const [hasVoiceNote, setHasVoiceNote] = useState(false);
+  const [voiceResult, setVoiceResult] = useState<VoiceRecordingResult | null>(null);
+  const [voiceModalVisible, setVoiceModalVisible] = useState(false);
   const scrollRef = useRef<ScrollView | null>(null);
+
+  const hasVoiceNote = voiceResult !== null;
 
   useEffect(() => {
     if (visible && aspect) {
       setScale(null);
       setReasonIds([]);
       setNote('');
-      setHasVoiceNote(false);
+      setVoiceResult(null);
     }
   }, [visible, aspect?.id]);
 
@@ -120,7 +122,7 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
     setScale(null);
     setReasonIds([]);
     setNote('');
-    setHasVoiceNote(false);
+    setVoiceResult(null);
   }, []);
   const isFinalAspect = useMemo(() => {
     if (!aspect || !orderedAspects?.length) {
@@ -490,23 +492,37 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
                   }}
                 />
 
-                {onVoiceNotePress ? (
+                {/* Voice note section */}
+                {hasVoiceNote ? (
+                  <View style={styles.voicePreview}>
+                    <View style={styles.voicePreviewLeft}>
+                      <Icon name="mic" size={18} color={colors.primary} />
+                      <Text style={styles.voicePreviewText}>
+                        Voice note · {Math.ceil((voiceResult?.durationMs ?? 0) / 1000)}s
+                      </Text>
+                    </View>
+                    <Pressable
+                      style={styles.voiceDeleteBtn}
+                      onPress={() => setVoiceResult(null)}
+                      hitSlop={6}
+                    >
+                      <Icon name="close" size={16} color="#B91C1C" />
+                    </Pressable>
+                  </View>
+                ) : (
                   <Pressable
                     style={styles.voiceRow}
-                    onPress={() => {
-                      setHasVoiceNote(true);
-                      onVoiceNotePress();
-                    }}
+                    onPress={() => setVoiceModalVisible(true)}
                     accessibilityRole="button"
                     accessibilityLabel="Record voice note"
                   >
                     <Icon name="mic" size={22} color={colors.primary} />
                     <Text style={styles.voiceText}>
-                      {hasVoiceNote ? t.voiceNoteAttached : t.voiceNoteRecord}
+                      {t.voiceNoteRecord}
                     </Text>
                     <Icon name="chevron-right" size={22} color={colors.textMuted} />
                   </Pressable>
-                ) : null}
+                )}
               </ScrollView>
             </KeyboardAvoidingView>
             <View style={styles.saveFooter}>
@@ -570,6 +586,15 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
           </View>
         </View>
       </Modal>
+
+      <VoiceRecorderModal
+        visible={voiceModalVisible}
+        onClose={() => setVoiceModalVisible(false)}
+        onSave={(result) => {
+          setVoiceResult(result);
+          setVoiceModalVisible(false);
+        }}
+      />
     </>
   );
 });
@@ -834,6 +859,39 @@ const styles = StyleSheet.create({
     flex: 1,
     fontWeight: '600',
     color: colors.primaryDark,
+  },
+  voicePreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.full,
+    backgroundColor: 'rgba(124,106,232,0.08)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(124,106,232,0.18)',
+    marginBottom: spacing.md,
+  },
+  voicePreviewLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  voicePreviewText: {
+    ...textStyles.bodyMedium,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  voiceDeleteBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#FEF2F2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(220,38,38,0.2)',
   },
   saveFooter: {
     // flex: 1,

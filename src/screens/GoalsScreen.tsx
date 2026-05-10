@@ -29,6 +29,8 @@ import * as Haptics from 'expo-haptics';
 import { setStatusBarStyle } from 'expo-status-bar';
 import { useFocusEffect } from '@react-navigation/native';
 import { AppGradientHeader, Button, Card, InputField } from '../components';
+import { DatePickerField } from '../components/DatePickerField';
+import { toIsoDate } from '../utils/age';
 import { useToast } from '../context/ToastContext';
 import type { Goal, GoalStatus } from '../types';
 import { formatAppDate } from '../utils/dateFormat';
@@ -128,6 +130,16 @@ function progressBarColor(pct: number, status: GoalStatus): string {
 	if (pct >= 75) return colors.growth;
 	if (pct >= 40) return colors.primary;
 	return colors.accent;
+}
+
+function parseIsoDateAtNoon(isoDate: string): Date {
+	return new Date(`${isoDate}T12:00:00`);
+}
+
+function createGoalScheduleMaxDate(): Date {
+	const date = new Date();
+	date.setFullYear(date.getFullYear() + 5);
+	return date;
 }
 
 /* ─── FabTooltip ─── */
@@ -257,11 +269,16 @@ const GoalsScreen: React.FC = () => {
 	const [formTitle, setFormTitle] = useState('');
 	const [formRewardName, setFormRewardName] = useState('');
 	const [formRewardValue, setFormRewardValue] = useState('');
-	const [formStart, setFormStart] = useState('');
-	const [formEnd, setFormEnd] = useState('');
+	const [formStart, setFormStart] = useState(() => toIsoDate(new Date()));
+	const [formEnd, setFormEnd] = useState(() => {
+		const d = new Date();
+		d.setDate(d.getDate() + 30);
+		return toIsoDate(d);
+	});
 	const [formTargetRaw, setFormTargetRaw] = useState('');
 	const [formError, setFormError] = useState<string | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
+	const scheduleMaxDate = useMemo(() => createGoalScheduleMaxDate(), []);
 
 	const bottomPad = useMemo(
 		() => getFloatingTabBarBottomPadding(insets.bottom),
@@ -294,8 +311,11 @@ const GoalsScreen: React.FC = () => {
 		setFormTitle('');
 		setFormRewardName('');
 		setFormRewardValue('');
-		setFormStart('');
-		setFormEnd('');
+		const today = new Date();
+		setFormStart(toIsoDate(today));
+		const future = new Date();
+		future.setDate(future.getDate() + 30);
+		setFormEnd(toIsoDate(future));
 		setFormTargetRaw('');
 		setFormError(null);
 	}, []);
@@ -334,7 +354,7 @@ const GoalsScreen: React.FC = () => {
 		const startT = Date.parse(start);
 		const endT = Date.parse(end);
 		if (Number.isNaN(startT) || Number.isNaN(endT)) {
-			setFormError('Use valid dates (e.g. 2026-04-15).');
+			setFormError(`Use valid dates (e.g. ${formatAppDate('2026-04-15')}).`);
 			Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
 			return;
 		}
@@ -639,26 +659,33 @@ const GoalsScreen: React.FC = () => {
 								</View>
 								<View style={styles.formSectionBody}>
 									<View style={styles.dateFieldsRow}>
-										<View style={styles.dateFieldCol}>
-											<InputField
-												label="Start"
-												placeholder="YYYY-MM-DD"
-												value={formStart}
-												onChangeText={setFormStart}
-												autoCapitalize="none"
-											// leftIcon={<Icon name="play-arrow" size={16} color={colors.textMuted} />}
-											/>
-										</View>
-										<View style={styles.dateFieldCol}>
-											<InputField
-												label="End"
-												placeholder="YYYY-MM-DD"
-												value={formEnd}
-												onChangeText={setFormEnd}
-												autoCapitalize="none"
-											// leftIcon={<Icon name="stop" size={16} color={colors.textMuted} />}
-											/>
-										</View>
+									<View style={styles.dateFieldCol}>
+										<DatePickerField
+											label="Start"
+											valueIso={formStart}
+											onChangeIso={(nextStart) => {
+												setFormStart(nextStart);
+												if (formEnd && Date.parse(formEnd) < Date.parse(nextStart)) {
+													setFormEnd(nextStart);
+												}
+											}}
+											minimumDate={new Date()}
+											maximumDate={scheduleMaxDate}
+											placeholder="Select start"
+											leftIcon={<Icon name="play-arrow" size={16} color={colors.textMuted} />}
+										/>
+									</View>
+									<View style={styles.dateFieldCol}>
+											<DatePickerField
+											label="End"
+											valueIso={formEnd}
+											onChangeIso={setFormEnd}
+											minimumDate={formStart ? parseIsoDateAtNoon(formStart) : new Date()}
+											maximumDate={scheduleMaxDate}
+											placeholder="Select end"
+											leftIcon={<Icon name="stop" size={16} color={colors.textMuted} />}
+										/>
+									</View>
 									</View>
 								</View>
 							</View>

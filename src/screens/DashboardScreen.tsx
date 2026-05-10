@@ -753,7 +753,6 @@ const DashboardScreen: React.FC = () => {
         onClose={closeAspectRating}
         onSave={handleAspectRatingSave}
         onSaveAndNext={handleAspectRatingSaveAndNext}
-        onVoiceNotePress={handleVoiceNotePlaceholder}
         language={ratingLang}
       />
 

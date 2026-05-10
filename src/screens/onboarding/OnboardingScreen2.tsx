@@ -63,9 +63,10 @@ const LANGUAGES = [
 	{ code: 'ta', flag: '🇮🇳', name: 'Tamil' },
 ];
 
-interface Props { navigation: any; }
+interface Props { navigation: any; route: any; }
 
-export function OnboardingScreen2({ navigation }: Props) {
+export function OnboardingScreen2({ navigation, route }: Props) {
+	const onboardType = route?.params?.onboardType ?? 'school';
 	const insets = useSafeAreaInsets();
 	const [fullName, setFullName] = useState('');
 	const [selectedRole, setSelectedRole] = useState<string | null>(null);
@@ -93,7 +94,7 @@ export function OnboardingScreen2({ navigation }: Props) {
 			screenX.value = withTiming(-SW * 0.15, { duration: 250, easing: Easing.out(Easing.cubic) }, () => {
 				screenX.value = 0;
 			});
-			navigation.navigate('Onboarding3');
+			navigation.navigate('Onboarding3', { onboardType });
 		}, 500);
 	};
 
