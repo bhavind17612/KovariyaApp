@@ -4,9 +4,12 @@ import { authService } from '../services/authService';
 
 interface AuthContextType extends AuthState {
   login: (credentials: LoginCredentials) => Promise<void>;
+  loginByEmail: (email: string) => Promise<void>;
+  loginWithPin: (pin: string) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   refreshAuth: () => Promise<void>;
+  completeAuthentication: (tokens: AuthTokens, user?: User) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -130,6 +133,39 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  /** OTP-based login — authenticate by email only (no password). */
+  const loginByEmail = async (email: string): Promise<void> => {
+    try {
+      dispatch({ type: 'SET_SIGNING_IN', payload: true });
+      dispatch({ type: 'CLEAR_ERROR' });
+
+      const response = await authService.loginByEmail(email);
+
+      dispatch({ type: 'SET_USER', payload: response.user });
+      dispatch({ type: 'SET_TOKENS', payload: response.tokens });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Login failed';
+      dispatch({ type: 'SET_ERROR', payload: errorMessage });
+      throw error;
+    }
+  };
+
+  const loginWithPin = async (pin: string): Promise<void> => {
+    try {
+      dispatch({ type: 'SET_SIGNING_IN', payload: true });
+      dispatch({ type: 'CLEAR_ERROR' });
+
+      const response = await authService.loginWithPin(pin);
+      console.log('response ', response);
+      dispatch({ type: 'SET_USER', payload: response.parent });
+      dispatch({ type: 'SET_TOKENS', payload: response.tokens });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'PIN Login failed';
+      dispatch({ type: 'SET_ERROR', payload: errorMessage });
+      throw error;
+    }
+  };
+
   const register = async (data: RegisterData): Promise<void> => {
     try {
       dispatch({ type: 'SET_SIGNING_IN', payload: true });
@@ -141,6 +177,31 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       dispatch({ type: 'SET_TOKENS', payload: response.tokens });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Registration failed';
+      dispatch({ type: 'SET_ERROR', payload: errorMessage });
+      throw error;
+    }
+  };
+
+  const completeAuthentication = async (tokens: AuthTokens, user?: User): Promise<void> => {
+    try {
+      dispatch({ type: 'SET_SIGNING_IN', payload: true });
+      dispatch({ type: 'CLEAR_ERROR' });
+
+      // Provide a minimal default user if missing from onboarding
+      const finalUser: User = user || {
+        id: String(Date.now()),
+        email: '',
+        name: 'Parent',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      await authService.setSession(tokens, finalUser);
+
+      dispatch({ type: 'SET_USER', payload: finalUser });
+      dispatch({ type: 'SET_TOKENS', payload: tokens });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Authentication failed';
       dispatch({ type: 'SET_ERROR', payload: errorMessage });
       throw error;
     }
@@ -169,9 +230,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const value: AuthContextType = {
     ...state,
     login,
+    loginByEmail,
+    loginWithPin,
     register,
     logout,
     refreshAuth,
+    completeAuthentication,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -51,6 +51,11 @@ type Props = {
   };
 };
 
+const BADGE_REWARD_IMAGES = {
+  respect: require('../../assets/badges/respect.webp'),
+  responsibility: require('../../assets/badges/responsibility.webp'),
+};
+
 export default function MissionDetailScreen({ route }: Props) {
   const { mission } = route.params;
   const insets = useSafeAreaInsets();
@@ -76,6 +81,7 @@ export default function MissionDetailScreen({ route }: Props) {
   const dailyToday = useMemo(() => getDailyStatusForToday(mission), [mission]);
   const dailyPal = dailyFloatingPalette(dailyToday);
   const typeVisual = missionTypeChipStyle(mission.missionType);
+  const isMissionComplete = mission.progressPercent >= 100;
 
   const doneCount = useMemo(
     () => mission.completionHistory.filter((entry) => entry.status === 'done').length,
@@ -218,6 +224,40 @@ export default function MissionDetailScreen({ route }: Props) {
                 <Text style={styles.dateStripValue}>{formatAppDate(mission.endDate)}</Text>
               </View>
             </View>
+
+            <LinearGradient
+              colors={
+                isMissionComplete
+                  ? [colors.mintSoft, 'rgba(255,255,255,0.96)']
+                  : [colors.peachSoft, 'rgba(255,255,255,0.96)']
+              }
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[
+                styles.rewardPanel,
+                isMissionComplete ? styles.rewardPanelEarned : styles.rewardPanelLocked,
+              ]}
+            >
+              <View style={styles.rewardPanelCopy}>
+                <Text
+                  style={[
+                    styles.rewardPanelKicker,
+                    { color: isMissionComplete ? colors.growth : colors.accent },
+                  ]}
+                >
+                  {isMissionComplete ? 'Badge earned' : 'Reward on completion'}
+                </Text>
+                <Text style={styles.rewardPanelTitle}>{mission.rewardBadge.name} Badge</Text>
+                <Text style={styles.rewardPanelDesc}>{mission.rewardBadge.description}</Text>
+              </View>
+              <View style={styles.rewardBadgeFrame}>
+                <Image
+                  source={BADGE_REWARD_IMAGES[mission.rewardBadge.key]}
+                  style={styles.rewardBadgeImage}
+                  resizeMode="contain"
+                />
+              </View>
+            </LinearGradient>
           </View>
         </Card>
 
@@ -640,6 +680,68 @@ const styles = StyleSheet.create({
     width: StyleSheet.hairlineWidth,
     backgroundColor: colors.border,
     marginVertical: 4,
+  },
+  rewardPanel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    padding: spacing.sm,
+    borderRadius: borderRadius.large,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  rewardPanelLocked: {
+    borderColor: 'rgba(232, 160, 74, 0.26)',
+  },
+  rewardPanelEarned: {
+    borderColor: 'rgba(63, 169, 122, 0.28)',
+  },
+  rewardBadgeFrame: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    flexShrink: 0,
+    ...Platform.select({
+      ios: {
+        shadowColor: colors.accent,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.12,
+        shadowRadius: 10,
+      },
+      android: { elevation: 2 },
+      default: {},
+    }),
+  },
+  rewardBadgeImage: {
+    width: 52,
+    height: 52,
+  },
+  rewardPanelCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  rewardPanelKicker: {
+    fontFamily: typography.fontFamily.primary,
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  rewardPanelTitle: {
+    ...textStyles.bodyLarge,
+    color: colors.ink,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  rewardPanelDesc: {
+    ...textStyles.caption,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    lineHeight: 18,
+    marginTop: 2,
   },
   sectionCard: {
     marginVertical: spacing.xs,

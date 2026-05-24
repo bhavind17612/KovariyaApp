@@ -195,6 +195,7 @@ function StatusPill({ group }: { group: SessionGroup }) {
         { backgroundColor: pal.bg },
       ]}
     >
+      <Icon name={pal.icon} size={12} color={pal.accent} />
       <Text style={[styles.floatingPillText, { color: pal.text }]}>
         {pal.label}
       </Text>
@@ -230,10 +231,6 @@ function SessionCard({ session }: { session: SessionItem }) {
             </View>
           </View>
         ) : null}
-        <View style={[styles.imageStateStrip, { backgroundColor: pal.tint }]}>
-          <Icon name={pal.icon} size={12} color={pal.accent} />
-          <Text style={[styles.imageStateText, { color: pal.text }]}>{pal.label}</Text>
-        </View>
         <View style={styles.durationChip}>
           <Icon name="timer" size={12} color="rgba(255,255,255,0.92)" />
           <Text style={styles.durationChipText}>{session.duration}</Text>
@@ -955,6 +952,9 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     paddingHorizontal: 10,
     flexShrink: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   floatingPillText: {
     fontFamily: typography.fontFamily.primary,

@@ -30,6 +30,8 @@ import { InputField } from '../../components/InputField';
 import { DatePickerField } from '../../components/DatePickerField';
 import { formatAppDate } from '../../utils/dateFormat';
 import { ageFromIsoDate, toIsoDate } from '../../utils/age';
+import { buildAuthHeaders, extractApiError, getApiBase } from '../../services/apiService';
+import { useToast } from '../../context/ToastContext';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
@@ -92,7 +94,7 @@ const GradeSheet = ({
 			<Animated.View style={[styles.gradeSheet, sheetStyle]}>
 				{/* <View style={styles.pickerHandle} /> */}
 				<View style={styles.gradeSheetHeader}>
-				<Text style={styles.gradeSheetTitle}>Select Standard</Text>
+					<Text style={styles.gradeSheetTitle}>Select Standard</Text>
 					<Pressable onPress={onClose} style={styles.gradeSheetClose}>
 						<Icon name="close" size={22} color={colors.textSecondary} />
 					</Pressable>
@@ -221,8 +223,15 @@ const GENDERS = [
 interface Props { navigation: any; route: any; }
 
 export function OnboardingScreen3({ navigation, route }: Props) {
+	console.log("rotue", route.params)
+	const { showToast } = useToast();
 	const onboardType: 'school' | 'institute' = route?.params?.onboardType ?? 'school';
 	const isSchool = onboardType === 'school';
+	const accessToken: string | null = route?.params?.accessToken ?? null;
+	// schoolId passed from OnboardingScreen1 (human-readable, e.g. "SCH-GJ-AHM-SPA")
+	const schoolId: string = route?.params?.schoolId ?? '';
+	// parentData passed from OnboardingScreen1 via verify-otp response
+	const parentData: any = route?.params?.parentData ?? null;
 	const insets = useSafeAreaInsets();
 	const [childName, setChildName] = useState('');
 	const [dobIso, setDobIso] = useState(() => toIsoDate(new Date(currentYear - 8, 0, 1)));
@@ -254,18 +263,56 @@ export function OnboardingScreen3({ navigation, route }: Props) {
 		&& gender !== null
 		&& (isSchool ? classSec.trim().length > 0 : batchDetails.trim().length > 0);
 
-	const goNext = () => {
+	const goNext = async () => {
 		if (!isFormValid || isLoading) return;
 		Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 		setIsLoading(true);
 
-		setTimeout(() => {
-			setIsLoading(false);
+		try {
+			const apiBase = getApiBase();
+			const authHeaders = await buildAuthHeaders(accessToken);
+			console.log('parentData', parentData)
+			// Build payload — school_id / institution_id are human-readable strings
+			const payload: Record<string, any> = {
+				parent_id: parentData?.parent_id,
+				full_name: childName.trim(),
+				date_of_birth: dobIso,
+				gender: gender || undefined,
+				grade: grade || undefined,
+			};
+
+			if (isSchool) {
+				payload.school_id = schoolId;
+				payload.section = classSec.trim() || undefined;
+			} else {
+				payload.institution_id = schoolId;
+				payload.batch = batchDetails.trim() || undefined;
+			}
+			console.log('payload', payload);
+			const res = await fetch(`${apiBase}/api/v1/students/onboarding`, {
+				method: 'POST',
+				headers: authHeaders,
+				body: JSON.stringify(payload),
+			});
+
+			const responseData = await res.json().catch(() => ({}));
+
+			if (!res.ok) {
+				throw new Error(extractApiError(responseData, 'Failed to add child. Please try again.'));
+			}
+
+			const successMsg = responseData.data?.message || responseData.message || 'Child added successfully!';
+			showToast({ message: successMsg, type: 'success' });
+
 			screenX.value = withTiming(-SW * 0.15, { duration: 250, easing: Easing.out(Easing.cubic) }, () => {
 				screenX.value = 0;
 			});
-			navigation.navigate('Onboarding4');
-		}, 500);
+			navigation.navigate('Onboarding4', { accessToken, parentData });
+		} catch (err: any) {
+			showToast({ message: err.message || 'Failed to add child. Please try again.', type: 'error' });
+		} finally {
+			setIsLoading(false);
+		}
 	};
 
 	const goBack = () => {

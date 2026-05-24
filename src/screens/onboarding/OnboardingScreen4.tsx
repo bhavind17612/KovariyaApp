@@ -27,6 +27,15 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import * as Haptics from 'expo-haptics';
 import { colors, spacing, borderRadius, shadows, textStyles } from '../../theme';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
+import {
+	clearOnboardingTokens,
+	getApiBase,
+	buildAuthHeaders,
+	extractApiError,
+	getOnboardingAccessToken,
+	getOnboardingRefreshToken,
+} from '../../services/apiService';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -110,11 +119,15 @@ const PinSquare = ({ value, isActive, state }: { value: string; isActive: boolea
 };
 
 // ─── Main Screen ─────────────────────────────────────────────────────────────
-interface Props { navigation: any; }
+interface Props { navigation: any; route: any; }
 
-export function OnboardingScreen4({ navigation }: Props) {
+export function OnboardingScreen4({ navigation, route }: Props) {
 	const insets = useSafeAreaInsets();
-	const { login } = useAuth();
+	const { completeAuthentication } = useAuth();
+	const { showToast } = useToast();
+	const accessToken: string | null = route?.params?.accessToken ?? null;
+	// parentData forwarded from Screen1 → Screen2 → Screen3 → Screen4
+	const parentData: any = route?.params?.parentData ?? null;
 	const [step, setStep] = useState<'set' | 'confirm'>('set');
 	const [pin, setPin] = useState('');
 	const [confirmPin, setConfirmPin] = useState('');
@@ -144,7 +157,14 @@ export function OnboardingScreen4({ navigation }: Props) {
 	const isComplete = isPinConfirmed && hasAcceptedPrivacy;
 
 	// Keep input focused seamlessly
-	const focusInput = () => hiddenInputRef.current?.focus();
+	const focusInput = () => {
+		if (hiddenInputRef.current?.isFocused()) {
+			hiddenInputRef.current.blur();
+			setTimeout(() => hiddenInputRef.current?.focus(), 50);
+		} else {
+			hiddenInputRef.current?.focus();
+		}
+	};
 
 	useEffect(() => {
 		const timer = setTimeout(focusInput, 400);
@@ -199,17 +219,58 @@ export function OnboardingScreen4({ navigation }: Props) {
 	};
 
 	const goNext = async () => {
-		if (isComplete && !isLoggingIn) {
-			Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-			setIsLoggingIn(true);
-			try {
-				await login({ email: 'user@kovariya.com', password: 'password' });
-			} catch (e) {
-				console.error(e);
-				setIsLoggingIn(false);
+		if (!isComplete || isLoggingIn) return;
+		Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+		setIsLoggingIn(true);
+		console.log("dsfsds");
+
+		try {
+			const finalAccessToken = accessToken ?? (await getOnboardingAccessToken());
+			const finalRefreshToken = (await getOnboardingRefreshToken()) ?? '';
+
+			// ── 1. Call set-pin API ──────────────────────────────────────────────
+			const apiBase = getApiBase();
+			const authHeaders = await buildAuthHeaders(finalAccessToken);
+			console.log("Callign api");
+			const res = await fetch(`${apiBase}/api/v1/parents/onboarding/set-pin`, {
+				method: 'POST',
+				headers: authHeaders,
+				body: JSON.stringify({
+					parent_id: parentData?.parent_id,
+					pin,
+				}),
+			});
+
+			const responseData = await res.json().catch(() => ({}));
+
+			if (!res.ok) {
+				const errMsg = extractApiError(responseData, 'Failed to set PIN. Please try again.');
+				showToast({ message: errMsg, type: 'error' });
+				return;
 			}
+
+			// ── 2. Persist auth tokens & mark onboarding complete ────────────────
+			if (finalAccessToken) {
+				await completeAuthentication({
+					accessToken: finalAccessToken,
+					refreshToken: finalRefreshToken,
+					expiresAt: Date.now() + 3_600_000,
+				});
+			}
+
+			// ── 3. Clean up temporary onboarding tokens ──────────────────────────
+			await clearOnboardingTokens();
+
+			const successMsg = responseData.data?.message || responseData.message || 'PIN set! Welcome to Kovariya 🎉';
+			showToast({ message: successMsg, type: 'success' });
+		} catch (err: any) {
+			const msg = err?.message || 'Something went wrong. Please try again.';
+			showToast({ message: msg, type: 'error' });
+		} finally {
+			setIsLoggingIn(false);
 		}
 	};
+
 
 	const goBack = () => {
 		Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

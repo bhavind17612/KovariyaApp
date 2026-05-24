@@ -15,7 +15,7 @@ import {
   Platform,
   AccessibilityInfo,
 } from 'react-native';
-import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
+import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import * as Haptics from 'expo-haptics';
@@ -94,14 +94,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {visible ? (
         <View pointerEvents="box-none" style={[StyleSheet.absoluteFill, styles.overlay]}>
           <Animated.View
-            entering={FadeInDown.springify().damping(18).stiffness(220)}
+            entering={FadeInUp.springify().damping(18).stiffness(220)}
             exiting={FadeOutUp.duration(180)}
             style={[
               styles.banner,
               type === 'error' && styles.bannerError,
               type === 'success' && styles.bannerSuccess,
               type === 'info' && styles.bannerInfo,
-              { marginBottom: Math.max(insets.bottom, spacing.md) + spacing.sm },
+              { marginTop: Math.max(insets.top, spacing.md) + spacing.sm },
             ]}
             accessibilityRole="alert"
             accessibilityLiveRegion="polite"
@@ -147,7 +147,7 @@ export function useToast(): ToastContextValue {
 
 const styles = StyleSheet.create({
   overlay: {
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-start',
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
   },

@@ -32,6 +32,8 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import * as Haptics from 'expo-haptics';
 import { colors, spacing, borderRadius, shadows, textStyles } from '../../theme';
 import { InputField } from '../../components/InputField';
+import { useToast } from '../../context/ToastContext';
+import { getApiBase, storeOnboardingTokens, extractApiError } from '../../services/apiService';
 
 
 const { width: SW } = Dimensions.get('window');
@@ -84,6 +86,7 @@ interface Props {
 }
 
 export function OnboardingScreen1({ navigation }: Props) {
+  const { showToast } = useToast();
   const [tab, setTab] = useState<'school' | 'institute'>('school');
   const pillX = useSharedValue(0);
   const pillStyle = useAnimatedStyle(() => ({ left: pillX.value }));
@@ -93,7 +96,10 @@ export function OnboardingScreen1({ navigation }: Props) {
   const [showCCPicker, setShowCCPicker] = useState(false);
   const [showOtp, setShowOtp] = useState(false);
   const [sendingOtp, setSendingOtp] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [otp, setOtp] = useState('');
+  // accessToken received from verify-otp; forwarded to downstream screens
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isOtpFocused, setIsOtpFocused] = useState(false);
   const [timer, setTimer] = useState(60);
   const [timerActive, setTimerActive] = useState(false);
@@ -136,16 +142,82 @@ export function OnboardingScreen1({ navigation }: Props) {
     setTimeout(() => otpInputRef.current?.focus(), 500);
   };
 
-  const handleSendOtp = () => {
+  const performSendOtp = async (isResend: boolean = false) => {
     if (sendingOtp) return;
+
+    // Validate inputs
+    if (!schoolId.trim()) {
+      showToast({ message: 'Please enter your School or Institute ID', type: 'error' });
+      return;
+    }
+
+    const trimmedMobile = mobile.trim();
+    if (!trimmedMobile) {
+      showToast({ message: 'Please enter your Mobile Number', type: 'error' });
+      return;
+    }
+
+    if (trimmedMobile.length !== 10 || !/^\d+$/.test(trimmedMobile)) {
+      showToast({ message: 'Please enter a valid 10-digit mobile number', type: 'error' });
+      return;
+    }
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setSendingOtp(true);
-    // Simulate OTP sending with 1.5s loader
-    setTimeout(() => {
+
+    try {
+      const apiBase = getApiBase();
+      // const fullMobileNumber = `${countryCode.code}${trimmedMobile}`;
+      const fullMobileNumber = `${trimmedMobile}`;
+
+      const res = await fetch(`${apiBase}/api/v1/parents/onboarding/send-otp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          school_id: schoolId.trim().toUpperCase(),
+          mobile_number: fullMobileNumber,
+        }),
+      });
+
+      const responseData = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        let errMsg = 'Something went wrong. Please try again.';
+        if (responseData && typeof responseData === 'object') {
+          if (typeof responseData.message === 'string' && responseData.message.trim()) {
+            errMsg = responseData.message;
+          } else if (typeof responseData.error === 'string' && responseData.error.trim()) {
+            errMsg = responseData.error;
+          } else if (responseData.data && typeof responseData.data.message === 'string') {
+            errMsg = responseData.data.message;
+          }
+        }
+        throw new Error(errMsg);
+      }
+
+      // Successful OTP send
+      const successMessage = responseData.data?.message || `OTP sent successfully to ${fullMobileNumber}`;
+      showToast({ message: successMessage, type: 'success' });
+
+      if (isResend) {
+        setTimer(60);
+        setTimerActive(true);
+        setOtp('');
+        otpInputRef.current?.focus();
+      } else {
+        transitionToOtp();
+      }
+    } catch (err: any) {
+      showToast({ message: err.message || 'Failed to send OTP. Please try again.', type: 'error' });
+    } finally {
       setSendingOtp(false);
-      transitionToOtp();
-    }, 1500);
+    }
   };
+
+  const handleSendOtp = () => performSendOtp(false);
 
   const handleBack = () => {
     if (showOtp) {
@@ -169,8 +241,44 @@ export function OnboardingScreen1({ navigation }: Props) {
     return () => subscription.remove();
   }, [showOtp]);
 
-  const proceedToNext = () => {
-    navigation.navigate('Onboarding2', { onboardType: tab });
+  /**
+   * Navigate to the correct onboarding screen based on the parent's
+   * last-completed onboarding_stage returned by the verify-otp API.
+   *
+   * Stage values (see migration 20260524000024):
+   *   1 = OTP verified  → still needs Profile (Screen 2)
+   *   2 = Profile saved → still needs Student (Screen 3)
+   *   3 = Student added → still needs PIN    (Screen 4)
+   *   4 = PIN set       → onboarding complete (should not normally land here)
+   */
+  const proceedToNext = (parentData: any, token: string | null) => {
+    console.log('proceedToNext – parentData:', parentData);
+
+    const stage: number = parentData?.onboarding_stage ?? 1;
+
+    const commonParams = {
+      onboardType: tab,
+      schoolId: schoolId.trim().toUpperCase(),
+      mobile: mobile.trim(),
+      accessToken: token,
+    };
+
+    let targetScreen: string;
+    let extraParams: Record<string, any> = {};
+
+    if (stage >= 3) {
+      // Stage 3 completed → go straight to PIN setup
+      targetScreen = 'Onboarding4';
+    } else if (stage >= 2) {
+      // Stage 2 completed → go straight to Add Child
+      targetScreen = 'Onboarding3';
+    } else {
+      // Stage 1 (default) → go to Profile Details, pass parentData for PATCH
+      targetScreen = 'Onboarding2';
+    }
+    extraParams = { parentData };
+    navigation.navigate(targetScreen, { ...commonParams, ...extraParams });
+
     setTimeout(() => {
       mainX.value = 0;
       otpX.value = SW;
@@ -179,21 +287,76 @@ export function OnboardingScreen1({ navigation }: Props) {
     }, 300);
   };
 
+  const handleVerifyOtp = async (enteredOtp?: string) => {
+    const otpToVerify = enteredOtp || otp;
+    if (otpToVerify.length !== 4) {
+      showToast({ message: 'Please enter a valid 4-digit OTP', type: 'error' });
+      return;
+    }
+
+    if (verifyingOtp) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setVerifyingOtp(true);
+
+    try {
+      const apiBase = getApiBase();
+      const trimmedMobile = mobile.trim();
+
+      const res = await fetch(`${apiBase}/api/v1/parents/onboarding/verify-otp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          school_id: schoolId.trim().toUpperCase(),
+          mobile_number: trimmedMobile,
+          otp_code: otpToVerify,
+        }),
+      });
+
+      const responseData = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(extractApiError(responseData, 'OTP verification failed. Please try again.'));
+      }
+
+      // Successful OTP Verification — extract and persist tokens
+      const data = responseData.data ?? responseData;
+      const newAccessToken: string | undefined = data?.accessToken || data?.access_token;
+      const newRefreshToken: string | undefined = data?.refreshToken || data?.refresh_token;
+
+      let resolvedToken: string | null = accessToken;
+      if (newAccessToken && newRefreshToken) {
+        await storeOnboardingTokens(newAccessToken, newRefreshToken);
+        setAccessToken(newAccessToken);
+        resolvedToken = newAccessToken;
+      }
+
+      const successMessage = data?.message || 'OTP verified successfully!';
+      showToast({ message: successMessage, type: 'success' });
+
+      // Pass the parent object AND the resolved token so proceedToNext
+      // can determine which onboarding screen to resume from.
+      proceedToNext(data?.parent, resolvedToken);
+    } catch (err: any) {
+      showToast({ message: err.message || 'OTP verification failed. Please try again.', type: 'error' });
+    } finally {
+      setVerifyingOtp(false);
+    }
+  };
+
   const handleOtpChange = (text: string) => {
     const cleaned = text.replace(/[^0-9]/g, '').slice(0, 4);
     setOtp(cleaned);
     if (cleaned.length === 4) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setTimeout(proceedToNext, 350);
+      setTimeout(() => handleVerifyOtp(cleaned), 350);
     }
   };
 
   const resendOtp = () => {
-    setTimer(60);
-    setTimerActive(true);
-    setOtp('');
-    otpInputRef.current?.focus();
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    performSendOtp(true);
   };
 
   return (
@@ -310,7 +473,14 @@ export function OnboardingScreen1({ navigation }: Props) {
               </Animated.View>
 
               {/* 4 OTP boxes + hidden input */}
-              <Pressable style={styles.otpRow} onPress={() => otpInputRef.current?.focus()}>
+              <Pressable style={styles.otpRow} onPress={() => {
+                if (otpInputRef.current?.isFocused()) {
+                  otpInputRef.current.blur();
+                  setTimeout(() => otpInputRef.current?.focus(), 50);
+                } else {
+                  otpInputRef.current?.focus();
+                }
+              }}>
                 {[0, 1, 2, 3].map((i) => {
                   const digit = otp[i] || '';
                   const isFocused = isOtpFocused && (otp.length === i || (otp.length === 4 && i === 3));
@@ -350,10 +520,17 @@ export function OnboardingScreen1({ navigation }: Props) {
                 <Pressable
                   android_ripple={{ color: 'rgba(255, 255, 255, 0.6)', foreground: true }}
                   style={styles.ctaBtn}
-                  onPress={proceedToNext}
+                  onPress={() => handleVerifyOtp()}
+                  disabled={verifyingOtp}
                 >
-                  <Text style={styles.ctaText}>Verify & Continue</Text>
-                  <Icon name="arrow-forward" size={20} color={colors.surface} />
+                  {verifyingOtp ? (
+                    <ActivityIndicator color={colors.surface} size="small" />
+                  ) : (
+                    <>
+                      <Text style={styles.ctaText}>Verify & Continue</Text>
+                      <Icon name="arrow-forward" size={20} color={colors.surface} />
+                    </>
+                  )}
                 </Pressable>
               </Animated.View>
             </Animated.View>

@@ -17,6 +17,12 @@ export type MentorMissionTimelineEntry = {
   dateTime: string;
 };
 
+export type MentorMissionBadgeReward = {
+  key: 'respect' | 'responsibility';
+  name: string;
+  description: string;
+};
+
 export type MentorMission = {
   id: string;
   title: string;
@@ -25,6 +31,7 @@ export type MentorMission = {
   startDate: string;
   endDate: string;
   progressPercent: number;
+  rewardBadge: MentorMissionBadgeReward;
   timeline: MentorMissionTimelineEntry[];
   completionHistory: MentorMissionHistoryEntry[];
 };
@@ -90,6 +97,11 @@ export const MENTOR_ASSIGNED_MISSIONS: MentorMission[] = [
     startDate: '2026-03-28',
     endDate: '2026-04-10',
     progressPercent: 64,
+    rewardBadge: {
+      key: 'respect',
+      name: 'Respect',
+      description: 'Complete this mission to earn the Respect badge.',
+    },
     timeline: [
       { label: 'Mentor assigned mission', dateTime: '2026-03-28 08:30' },
       { label: 'Parent reviewed expectations', dateTime: '2026-03-28 19:10' },
@@ -112,6 +124,11 @@ export const MENTOR_ASSIGNED_MISSIONS: MentorMission[] = [
     startDate: '2026-03-27',
     endDate: '2026-04-07',
     progressPercent: 46,
+    rewardBadge: {
+      key: 'responsibility',
+      name: 'Responsibility',
+      description: 'Finish this mission to unlock the Responsibility badge.',
+    },
     timeline: [
       { label: 'Mission started', dateTime: '2026-03-27 16:20' },
       { label: 'Tutor notes shared with parent', dateTime: '2026-03-28 20:05' },
@@ -132,6 +149,11 @@ export const MENTOR_ASSIGNED_MISSIONS: MentorMission[] = [
     startDate: '2026-03-30',
     endDate: '2026-04-15',
     progressPercent: 22,
+    rewardBadge: {
+      key: 'respect',
+      name: 'Respect',
+      description: 'Keep showing kindness to earn the Respect badge.',
+    },
     timeline: [
       { label: 'Mission assigned', dateTime: '2026-03-30 09:15' },
       { label: 'Parent orientation complete', dateTime: '2026-03-30 20:40' },

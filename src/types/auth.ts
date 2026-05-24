@@ -1,7 +1,13 @@
 export interface User {
-  id: string;
-  email: string;
-  name: string;
+  id: string; // The UUID of the user record
+  parentId?: string; // The human-readable parent_id (e.g., PAR-1234-1)
+  name: string; // Maps to parent_name
+  mobileNumber?: string;
+  email?: string;
+  schoolId?: string; // The human-readable school_id
+  schoolName?: string;
+  onboardingStage?: number;
+  hasPin?: boolean;
   avatar?: string;
   createdAt: string;
   updatedAt: string;
@@ -36,6 +42,6 @@ export interface RegisterData {
 }
 
 export interface AuthResponse {
-  user: User;
+  parent: User;
   tokens: AuthTokens;
 }

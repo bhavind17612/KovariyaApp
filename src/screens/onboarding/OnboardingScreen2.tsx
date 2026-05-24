@@ -24,6 +24,8 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import * as Haptics from 'expo-haptics';
 import { colors, spacing, borderRadius, shadows, textStyles } from '../../theme';
 import { InputField } from '../../components/InputField';
+import { useToast } from '../../context/ToastContext';
+import { getApiBase, buildAuthHeaders, extractApiError } from '../../services/apiService';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -66,7 +68,13 @@ const LANGUAGES = [
 interface Props { navigation: any; route: any; }
 
 export function OnboardingScreen2({ navigation, route }: Props) {
+	console.log('route', route.params);
+	const { showToast } = useToast();
 	const onboardType = route?.params?.onboardType ?? 'school';
+	const schoolId: string = route?.params?.schoolId ?? '';
+	const mobile: string = route?.params?.mobile ?? '';
+	const accessToken: string | null = route?.params?.accessToken ?? null;
+	const parentData: any | null = route?.params?.parentData ?? null;
 	const insets = useSafeAreaInsets();
 	const [fullName, setFullName] = useState('');
 	const [selectedRole, setSelectedRole] = useState<string | null>(null);
@@ -84,18 +92,52 @@ export function OnboardingScreen2({ navigation, route }: Props) {
 	const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 	const isFormValid = fullName.trim().length > 0 && selectedRole !== null && emailRegex.test(email.trim());
 
-	const goNext = () => {
+	const goNext = async () => {
 		if (!isFormValid || isLoading) return;
 		Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 		setIsLoading(true);
 
-		setTimeout(() => {
-			setIsLoading(false);
+		try {
+			const apiBase = getApiBase();
+			const authHeaders = await buildAuthHeaders(accessToken);
+
+			const res = await fetch(`${apiBase}/api/v1/parents/${parentData.uuid}`, {
+				method: 'PATCH',
+				headers: authHeaders,
+				body: JSON.stringify({
+					parent_name: fullName.trim(),
+					guardian_type: selectedRole,
+					email: email.trim().toLowerCase(),
+					school_id: schoolId,
+					mobile_number: mobile,
+				}),
+			});
+
+			const responseData = await res.json().catch(() => ({}));
+
+			if (!res.ok) {
+				throw new Error(extractApiError(responseData, 'Failed to add parent details. Please try again.'));
+			}
+
+			// Successful Parent Creation
+			const successMsg = responseData.message || responseData.data?.message || 'Profile saved successfully!';
+			showToast({ message: successMsg, type: 'success' });
+
 			screenX.value = withTiming(-SW * 0.15, { duration: 250, easing: Easing.out(Easing.cubic) }, () => {
 				screenX.value = 0;
 			});
-			navigation.navigate('Onboarding3', { onboardType });
-		}, 500);
+			navigation.navigate('Onboarding3', {
+				onboardType,
+				schoolId,
+				mobile,
+				accessToken,
+				parentData,   // needed by Screen3 to supply parent_uuid to the students API
+			});
+		} catch (err: any) {
+			showToast({ message: err.message || 'Failed to save profile. Please try again.', type: 'error' });
+		} finally {
+			setIsLoading(false);
+		}
 	};
 
 	const goBack = () => {

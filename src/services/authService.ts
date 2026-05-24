@@ -6,6 +6,7 @@ const STORAGE_KEYS = {
   REFRESH_TOKEN: '@kovariya_refresh_token',
   USER_DATA: '@kovariya_user_data',
   TOKEN_EXPIRES_AT: '@kovariya_token_expires_at',
+  REMEMBERED_PARENT_ID: '@kovariya_remembered_parent_id',
 } as const;
 
 /** Set `EXPO_PUBLIC_AUTH_API_URL` (e.g. https://api.example.com) to use real email/password login. */
@@ -17,10 +18,17 @@ function getAuthApiBase(): string {
 }
 
 type LoginApiJson = {
-  user?: {
-    id?: string;
+  user?: any;
+  parent?: {
+    uuid?: string;
+    parent_id?: string;
+    parent_name?: string;
+    mobile_number?: string;
     email?: string;
-    name?: string;
+    school_id?: string;
+    school_name?: string;
+    onboarding_stage?: number;
+    has_pin?: boolean;
     createdAt?: string;
     updatedAt?: string;
   };
@@ -29,6 +37,9 @@ type LoginApiJson = {
     refreshToken?: string;
     expiresAt?: number;
   };
+  accessToken?: string;
+  refreshToken?: string;
+  expiresAt?: number;
   message?: string;
   error?: string;
 };
@@ -55,6 +66,22 @@ function parseErrorMessage(data: unknown, status: number): string {
   return 'Could not sign you in. Please try again';
 }
 
+function mapParentToUser(u: any): User {
+  return {
+    id: u.uuid ?? u.id ?? '1',
+    parentId: u.parent_id,
+    name: u.parent_name ?? u.name ?? u.email?.split('@')[0] ?? 'Parent',
+    mobileNumber: u.mobile_number,
+    email: u.email,
+    schoolId: u.school_id,
+    schoolName: u.school_name,
+    onboardingStage: u.onboarding_stage,
+    hasPin: u.has_pin,
+    createdAt: u.createdAt ?? new Date().toISOString(),
+    updatedAt: u.updatedAt ?? new Date().toISOString(),
+  };
+}
+
 async function loginViaHttp(credentials: LoginCredentials): Promise<AuthResponse> {
   const base = getAuthApiBase();
   const url = `${base}/auth/login`;
@@ -77,27 +104,67 @@ async function loginViaHttp(credentials: LoginCredentials): Promise<AuthResponse
     throw new Error(parseErrorMessage(data, res.status));
   }
 
-  const u = data.user;
-  const t = data.tokens;
-  if (!u?.email || !t?.accessToken || !t?.refreshToken || t.expiresAt == null) {
+  const u = data.parent ?? data.user;
+  const accessToken = data.tokens?.accessToken ?? data.accessToken;
+  const refreshToken = data.tokens?.refreshToken ?? data.refreshToken;
+  const expiresAt = data.tokens?.expiresAt ?? data.expiresAt;
+
+  if (!u || !accessToken || !refreshToken) {
     throw new Error('Unexpected response from server');
   }
 
-  const user: User = {
-    id: u.id ?? '1',
-    email: u.email,
-    name: u.name ?? u.email.split('@')[0] ?? 'Parent',
-    createdAt: u.createdAt ?? new Date().toISOString(),
-    updatedAt: u.updatedAt ?? new Date().toISOString(),
-  };
+  const user = mapParentToUser(u);
 
   const tokens: AuthTokens = {
-    accessToken: t.accessToken,
-    refreshToken: t.refreshToken,
-    expiresAt: typeof t.expiresAt === 'number' ? t.expiresAt : Date.now() + 3600_000,
+    accessToken,
+    refreshToken,
+    expiresAt: typeof expiresAt === 'number' ? expiresAt : Date.now() + 3600_000,
   };
 
-  return { user, tokens };
+  return { parent: user, tokens };
+}
+
+async function loginWithPinHttp(pin: string): Promise<AuthResponse> {
+  const base = getAuthApiBase();
+  // If EXPO_PUBLIC_AUTH_API_URL is missing, fallback to getApiBase() logic for Android/iOS local dev
+  const apiBaseUrl = base || (require('./apiService').getApiBase());
+  const url = `${apiBaseUrl}/api/v1/parents/auth/verify-pin`;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      pin,
+    }),
+  });
+
+  const data = (await res.json().catch(() => ({}))) as LoginApiJson;
+
+  if (!res.ok) {
+    throw new Error(parseErrorMessage(data, res.status));
+  }
+
+  const u = data.parent ?? data.user;
+  const accessToken = data.tokens?.accessToken ?? data.accessToken;
+  const refreshToken = data.tokens?.refreshToken ?? data.refreshToken;
+  const expiresAt = data.tokens?.expiresAt ?? data.expiresAt;
+
+  if (!u || !accessToken || !refreshToken) {
+    throw new Error('Unexpected response from server');
+  }
+
+  const user = mapParentToUser(u);
+
+  const tokens: AuthTokens = {
+    accessToken,
+    refreshToken,
+    expiresAt: typeof expiresAt === 'number' ? expiresAt : Date.now() + 3600_000,
+  };
+
+  return { parent: user, tokens };
 }
 
 const mockApi = {
@@ -119,7 +186,7 @@ const mockApi = {
         expiresAt: Date.now() + 60 * 60 * 1000,
       };
 
-      return { user, tokens };
+      return { parent: user, tokens };
     }
 
     throw new Error('Invalid email or password');
@@ -142,7 +209,7 @@ const mockApi = {
       expiresAt: Date.now() + 60 * 60 * 1000,
     };
 
-    return { user, tokens };
+    return { parent: user, tokens };
   },
 
   async refreshToken(refreshToken: string): Promise<AuthTokens> {
@@ -163,13 +230,34 @@ const mockApi = {
     await new Promise<void>((resolve) => setTimeout(resolve, 80));
     return token.startsWith('mock-access');
   },
+
+  /** OTP-based login: create session for any valid email (no password needed). */
+  async loginByEmail(email: string): Promise<AuthResponse> {
+    await new Promise<void>((resolve) => setTimeout(resolve, 600));
+
+    const user: User = {
+      id: String(Date.now()),
+      email: email.trim().toLowerCase(),
+      name: email.split('@')[0] ?? 'Parent',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const tokens: AuthTokens = {
+      accessToken: `mock-access-${Date.now()}`,
+      refreshToken: `mock-refresh-${Date.now()}`,
+      expiresAt: Date.now() + 60 * 60 * 1000,
+    };
+
+    return { parent: user, tokens };
+  },
 };
 
 class AuthService {
   private static instance: AuthService;
   private tokenRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
-  private constructor() {}
+  private constructor() { }
 
   static getInstance(): AuthService {
     if (!AuthService.instance) {
@@ -227,19 +315,53 @@ class AuthService {
       ? await loginViaHttp(credentials)
       : await mockApi.login(credentials);
 
-    await Promise.all([this.storeTokens(response.tokens), this.storeUser(response.user)]);
+    await Promise.all([this.storeTokens(response.tokens), this.storeUser(response.parent)]);
+    if (response.parent.parentId) {
+      await AsyncStorage.setItem(STORAGE_KEYS.REMEMBERED_PARENT_ID, response.parent.parentId);
+    }
+    this.setupTokenRefresh(response.tokens.expiresAt);
+    return response;
+  }
+
+  async loginWithPin(pin: string): Promise<AuthResponse> {
+    const response = await loginWithPinHttp(pin);
+    console.log('response == ', response);
+    await Promise.all([this.storeTokens(response.tokens), this.storeUser(response.parent)]);
+    if (response.parent.parentId) {
+      await AsyncStorage.setItem(STORAGE_KEYS.REMEMBERED_PARENT_ID, response.parent.parentId);
+    }
     this.setupTokenRefresh(response.tokens.expiresAt);
     return response;
   }
 
   async register(data: RegisterData): Promise<AuthResponse> {
     const response = await mockApi.register(data);
-    await Promise.all([this.storeTokens(response.tokens), this.storeUser(response.user)]);
+    await Promise.all([this.storeTokens(response.tokens), this.storeUser(response.parent)]);
     this.setupTokenRefresh(response.tokens.expiresAt);
     return response;
   }
 
+  /** OTP-based login by email only (no password). Will call real API when available. */
+  async loginByEmail(email: string): Promise<AuthResponse> {
+    const response = await mockApi.loginByEmail(email);
+    await Promise.all([this.storeTokens(response.tokens), this.storeUser(response.parent)]);
+    this.setupTokenRefresh(response.tokens.expiresAt);
+    return response;
+  }
+
+  async setSession(tokens: AuthTokens, user?: User | null): Promise<void> {
+    await this.storeTokens(tokens);
+    if (user) {
+      await this.storeUser(user);
+      if (user.parentId) {
+        await AsyncStorage.setItem(STORAGE_KEYS.REMEMBERED_PARENT_ID, user.parentId);
+      }
+    }
+    this.setupTokenRefresh(tokens.expiresAt);
+  }
+
   async logout(): Promise<void> {
+    // Note: We intentionally DO NOT clear REMEMBERED_PARENT_ID so the PIN login still works!
     await Promise.all([
       AsyncStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN),
       AsyncStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN),
@@ -324,6 +446,14 @@ class AuthService {
 
   async getCurrentUser(): Promise<User | null> {
     return this.getStoredUser();
+  }
+
+  async getRememberedParentId(): Promise<string | null> {
+    try {
+      return await AsyncStorage.getItem(STORAGE_KEYS.REMEMBERED_PARENT_ID);
+    } catch {
+      return null;
+    }
   }
 
   async getAccessToken(): Promise<string | null> {

@@ -14,9 +14,10 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { setStatusBarStyle } from 'expo-status-bar';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import Icon2 from 'react-native-vector-icons/Octicons';
 import Animated, {
   FadeInDown,
   useAnimatedStyle,
@@ -182,6 +183,7 @@ const WEEK_STRIP = [
 
 const DashboardScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const { width: windowWidth } = useWindowDimensions();
   const { showToast } = useToast();
   const { children, selectedChildId, setSelectedChildId, childPickerVisible, closeChildPicker } = useChildren();
@@ -298,6 +300,10 @@ const DashboardScreen: React.FC = () => {
     });
   }, [showToast]);
 
+  const openNotifications = useCallback(() => {
+    navigation.navigate('Notifications' as never);
+  }, [navigation]);
+
   // Confidence Factor (CF) is provided as percent (0-100) on this screen.
   // Your scoring system: CF = max(0.4, min(1, N/3)).
   const confidencePercent = clamp(selectedChild.confidenceIndicator ?? 0, 0, 100);
@@ -347,6 +353,8 @@ const DashboardScreen: React.FC = () => {
             style={styles.iconButton}
             accessibilityRole="button"
             accessibilityLabel="Notifications"
+            onPress={openNotifications}
+            activeOpacity={0.78}
           >
             <Icon name="notifications-none" size={26} color="rgba(255, 255, 255, 0.88)" />
             <View style={styles.notificationBadge} />
@@ -434,10 +442,8 @@ const DashboardScreen: React.FC = () => {
               end={{ x: 1, y: 1 }}
               style={styles.missionGradient}
             >
-              <View style={styles.missionOrbs} pointerEvents="none">
-                <View style={styles.missionOrbA} />
-                <View style={styles.missionOrbB} />
-                <View style={styles.missionOrbC} />
+              <View style={styles.missionGoalWatermark} pointerEvents="none">
+                <Icon2 name="goal" size={100} color={colors.primaryLight} />
               </View>
 
               <View style={styles.missionTopBar}>
@@ -1395,36 +1401,15 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     position: 'relative',
   },
-  missionOrbs: {
-    ...StyleSheet.absoluteFillObject,
-    overflow: 'hidden',
-  },
-  missionOrbA: {
+  missionGoalWatermark: {
     position: 'absolute',
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: 'rgba(124, 106, 232, 0.07)',
-    top: -28,
-    right: -20,
-  },
-  missionOrbB: {
-    position: 'absolute',
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(63, 169, 122, 0.06)',
-    bottom: 20,
-    left: -12,
-  },
-  missionOrbC: {
-    position: 'absolute',
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-    top: 44,
-    left: '28%',
+    top: -10,
+    right: -10,
+    width: 136,
+    height: 136,
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.6,
   },
   missionTopBar: {
     flexDirection: 'row',

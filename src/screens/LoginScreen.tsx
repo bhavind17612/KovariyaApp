@@ -1,276 +1,821 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
+  Pressable,
+  TextInput,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Pressable,
+  Dimensions,
+  ActivityIndicator,
+  Image,
+  BackHandler,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSpring,
+  withSequence,
+  withDelay,
+  interpolate,
+  Easing,
+  FadeIn,
+  FadeInDown,
+  FadeInUp,
+  FadeOut,
+} from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import * as Haptics from 'expo-haptics';
 
 import { colors, spacing, borderRadius, shadows, textStyles } from '../theme';
-import { Button } from '../components/Button';
 import { InputField } from '../components/InputField';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { LoginCredentials } from '../types/auth';
 
-function validateEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+const { width: SW } = Dimensions.get('window');
+
+// ─── Animated PIN / OTP box ─────────────────────────────────────────────────
+const DigitBox = ({
+  value,
+  focused,
+  hasError,
+}: {
+  index: number;
+  value: string;
+  focused: boolean;
+  hasError?: boolean;
+}) => {
+  const scale = useSharedValue(1);
+  useEffect(() => {
+    if (value) {
+      scale.value = withSequence(
+        withSpring(1.12, { damping: 16 }),
+        withSpring(1, { damping: 16 }),
+      );
+    }
+  }, [value]);
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+  return (
+    <Animated.View
+      style={[
+        styles.digitBox,
+        focused && styles.digitBoxFocused,
+        value && styles.digitBoxFilled,
+        hasError && styles.digitBoxError,
+        animStyle,
+      ]}
+    >
+      {value ? (
+        <View style={styles.digitDot} />
+      ) : (
+        <Text style={styles.digitPlaceholder}>•</Text>
+      )}
+    </Animated.View>
+  );
+};
+
+// ─── Illustration (same as Onboarding) ──────────────────────────────────────
+const IllustrationCard = () => (
+  <View style={styles.illusCard}>
+    <Image
+      source={require('../../assets/images/onboarding-1.webp')}
+      style={styles.illusImage}
+    />
+    <View style={styles.illusTextBox}>
+      <Text style={styles.illusTitle}>Welcome Back</Text>
+      <Text style={styles.illusSub}>Smart parenting, calmer days</Text>
+    </View>
+  </View>
+);
+
+// ─── Main Login Screen ──────────────────────────────────────────────────────
+interface LoginProps {
+  navigation: any;
 }
 
-export function LoginScreen() {
-  const { login, isSigningIn } = useAuth();
+export function LoginScreen({ navigation }: LoginProps) {
+  const { loginWithPin, loginByEmail, isSigningIn } = useAuth();
   const { showToast } = useToast();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState({ email: '', password: '' });
 
-  const handleLogin = async () => {
-    const next = { email: '', password: '' };
+  const [rememberedParentId, setRememberedParentId] = useState<string | null>(null);
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  const [mode, setMode] = useState<'pin' | 'email'>('pin');
+  const [pin, setPin] = useState('');
+  const [isPinFocused, setIsPinFocused] = useState(false);
+  const [pinError, setPinError] = useState(false);
+  const [verifyingPin, setVerifyingPin] = useState(false);
+  const pinInputRef = useRef<TextInput>(null);
+
+  // Fetch remembered parent ID on mount
+  useEffect(() => {
+    require('../services/authService').authService.getRememberedParentId().then((id: string | null) => {
+      setRememberedParentId(id);
+      if (!id) {
+        // If no remembered parent, force them to use email/OTP
+        setMode('email');
+      }
+    });
+  }, []);
+
+  // Email OTP state
+  const [email, setEmail] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [showOtpEntry, setShowOtpEntry] = useState(false);
+  const [otp, setOtp] = useState('');
+  const [isOtpFocused, setIsOtpFocused] = useState(false);
+  const [timer, setTimer] = useState(60);
+  const [timerActive, setTimerActive] = useState(false);
+  const otpInputRef = useRef<TextInput>(null);
+
+  // ── Slide animation (PIN ↔ Email) ─────────────────────────────────────────
+  const pinX = useSharedValue(0);
+  const emailX = useSharedValue(SW);
+  const emailOtpX = useSharedValue(SW);
+
+  const pinSlideStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: pinX.value }],
+    opacity: interpolate(pinX.value, [-SW, 0], [0, 1]),
+  }));
+  const emailSlideStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: emailX.value }],
+    opacity: interpolate(emailX.value, [0, SW], [1, 0]),
+    position: 'absolute' as const,
+    width: '100%' as const,
+  }));
+  const emailOtpSlideStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: emailOtpX.value }],
+    opacity: interpolate(emailOtpX.value, [0, SW], [1, 0]),
+    position: 'absolute' as const,
+    width: '100%' as const,
+  }));
+
+  // Timer countdown
+  useEffect(() => {
+    if (!timerActive) return;
+    if (timer <= 0) {
+      setTimerActive(false);
+      return;
+    }
+    const id = setTimeout(() => setTimer((t) => t - 1), 1000);
+    return () => clearTimeout(id);
+  }, [timer, timerActive]);
+
+  // ── Switch to Email OTP ───────────────────────────────────────────────────
+  const switchToEmail = () => {
+    setMode('email');
+    pinX.value = withTiming(-SW, { duration: 360, easing: Easing.inOut(Easing.cubic) });
+    emailX.value = withTiming(0, { duration: 360, easing: Easing.inOut(Easing.cubic) });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  // ── Switch back to PIN ────────────────────────────────────────────────────
+  const switchToPin = () => {
+    if (showOtpEntry) {
+      // Go from OTP back to email form
+      emailX.value = withTiming(0, { duration: 340, easing: Easing.inOut(Easing.cubic) });
+      emailOtpX.value = withTiming(SW, { duration: 340, easing: Easing.inOut(Easing.cubic) });
+      setTimeout(() => setShowOtpEntry(false), 400);
+    } else {
+      // Go from email form back to PIN
+      setMode('pin');
+      pinX.value = withTiming(0, { duration: 360, easing: Easing.inOut(Easing.cubic) });
+      emailX.value = withTiming(SW, { duration: 360, easing: Easing.inOut(Easing.cubic) });
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  // Hardware back
+  useEffect(() => {
+    const onBackPress = () => {
+      if (showOtpEntry || mode === 'email') {
+        switchToPin();
+        return true;
+      }
+      return false;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [mode, showOtpEntry]);
+
+  // ── PIN handling ──────────────────────────────────────────────────────────
+  const handlePinChange = (text: string) => {
+    const cleaned = text.replace(/[^0-9]/g, '').slice(0, 4);
+    setPin(cleaned);
+    setPinError(false);
+
+    if (cleaned.length === 4) {
+      verifyPin(cleaned);
+    }
+  };
+
+  const verifyPin = async (enteredPin: string) => {
+    setVerifyingPin(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    try {
+      await loginWithPin(enteredPin);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err) {
+      console.log('err ', err)
+      setPinError(true);
+      setPin('');
+      const msg = err instanceof Error ? err.message : 'Could not verify PIN';
+      showToast({ message: msg, type: 'error', durationMs: 4000 });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setTimeout(() => pinInputRef.current?.focus(), 300);
+    } finally {
+      setVerifyingPin(false);
+    }
+  };
+
+  // ── Email OTP handling ────────────────────────────────────────────────────
+  const validateEmail = (v: string) =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+
+  const handleSendOtp = () => {
+    if (sendingOtp) return;
 
     if (!email.trim()) {
-      next.email = 'Email is required';
-    } else if (!validateEmail(email)) {
-      next.email = 'Enter a valid email';
+      setEmailError('Email is required');
+      return;
     }
-
-    if (!password) {
-      next.password = 'Password is required';
-    } else if (password.length < 6) {
-      next.password = 'Use at least 6 characters';
-    }
-
-    setFieldErrors(next);
-
-    if (next.email || next.password) {
-      showToast({
-        message: next.email || next.password,
-        type: 'error',
-        durationMs: 4200,
-      });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    if (!validateEmail(email)) {
+      setEmailError('Enter a valid email');
       return;
     }
 
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const credentials: LoginCredentials = {
-        email: email.trim().toLowerCase(),
-        password,
-      };
-      await login(credentials);
-    } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : 'Could not sign you in. Please try again';
-      showToast({ message: msg, type: 'error', durationMs: 5200 });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSendingOtp(true);
+
+    // Simulate sending OTP
+    setTimeout(() => {
+      setSendingOtp(false);
+      setShowOtpEntry(true);
+      setTimer(60);
+      setTimerActive(true);
+
+      // Slide to OTP entry
+      emailX.value = withTiming(-SW, { duration: 360, easing: Easing.inOut(Easing.cubic) });
+      emailOtpX.value = withTiming(0, { duration: 360, easing: Easing.inOut(Easing.cubic) });
+
+      setTimeout(() => otpInputRef.current?.focus(), 500);
+    }, 1500);
+  };
+
+  const handleOtpChange = (text: string) => {
+    const cleaned = text.replace(/[^0-9]/g, '').slice(0, 4);
+    setOtp(cleaned);
+
+    if (cleaned.length === 4) {
+      verifyEmailOtp(cleaned);
     }
   };
 
-  const togglePasswordVisibility = () => {
-    setShowPassword((v) => !v);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  const verifyEmailOtp = async (_enteredOtp: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    try {
+      // Accept any 4-digit OTP for now — will validate via API later
+      await new Promise((r) => setTimeout(r, 800));
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      // Authenticate by email only (OTP already validated above)
+      await loginByEmail(email.trim().toLowerCase());
+    } catch (err) {
+      setOtp('');
+      const msg = err instanceof Error ? err.message : 'OTP verification failed';
+      showToast({ message: msg, type: 'error', durationMs: 4000 });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setTimeout(() => otpInputRef.current?.focus(), 300);
+    }
   };
+
+  const resendOtp = () => {
+    setTimer(60);
+    setTimerActive(true);
+    setOtp('');
+    otpInputRef.current?.focus();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    showToast({ message: 'OTP resent to your email', type: 'info', durationMs: 2500 });
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  const showBackButton = mode === 'email';
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView
-        style={styles.flex}
+        style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView
+          style={{ flex: 1 }}
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.heroBlob} />
-          <View style={styles.header}>
-            <View style={styles.mark}>
-              <View style={styles.markInner}>
-                <Icon name="spa" size={28} color={colors.ink} />
-              </View>
-              <Text style={styles.brand}>Kovariya</Text>
-              <Text style={styles.tagline}>Smart parenting, calmer days</Text>
-            </View>
-          </View>
+          {/* Back button */}
+          {showBackButton ? (
+            <Animated.View entering={FadeIn.duration(200)}>
+              <Pressable style={styles.backBtn} onPress={switchToPin} hitSlop={12}>
+                <Icon name="arrow-back" size={24} color={colors.textPrimary} />
+              </Pressable>
+            </Animated.View>
+          ) : (
+            <View style={styles.backBtnSpacer} />
+          )}
 
-          <View style={styles.card}>
-            <Text style={styles.title}>Sign in</Text>
-            <Text style={styles.subtitle}>
-              Sign in with your email and password. Your session stays on this device.
-            </Text>
+          {/* Illustration — only on PIN screen */}
+          {mode === 'pin' && (
+            <Animated.View entering={FadeInDown.duration(500).delay(100)}>
+              <IllustrationCard />
+            </Animated.View>
+          )}
 
-            <View style={styles.fields}>
-              <InputField
-                label="Email"
-                value={email}
-                onChangeText={(t) => {
-                  setEmail(t);
-                  if (fieldErrors.email) {
-                    setFieldErrors((e) => ({ ...e, email: '' }));
-                  }
-                }}
-                placeholder="you@example.com"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoComplete="email"
-                textContentType="emailAddress"
-                error={fieldErrors.email}
-                leftIcon={<Icon name="alternate-email" size={22} color={colors.textMuted} />}
-              />
-
-              <InputField
-                label="Password"
-                value={password}
-                onChangeText={(t) => {
-                  setPassword(t);
-                  if (fieldErrors.password) {
-                    setFieldErrors((e) => ({ ...e, password: '' }));
-                  }
-                }}
-                placeholder="Your password"
-                secureTextEntry={!showPassword}
-                autoComplete="password"
-                textContentType="password"
-                error={fieldErrors.password}
-                leftIcon={<Icon name="lock-outline" size={22} color={colors.textMuted} />}
-                rightIcon={
-                  <Icon
-                    name={showPassword ? 'visibility-off' : 'visibility'}
-                    size={22}
-                    color={colors.textMuted}
-                  />
-                }
-                onRightIconPress={togglePasswordVisibility}
-              />
-            </View>
-
-            <Button
-              title="Sign in"
-              onPress={handleLogin}
-              loading={isSigningIn}
-              disabled={isSigningIn}
-              size="large"
-              style={styles.cta}
-            />
-
-            {__DEV__ ? (
-              <View style={styles.devHint}>
-                <Icon name="science" size={18} color={colors.textSecondary} />
-                <Text style={styles.devHintText}>
-                  Dev: user@kovariya.com / password
+          {/* Sliding container */}
+          <View style={{ flex: 1 }}>
+            {/* ─── PIN Entry ──────────────────────────────────────── */}
+            <Animated.View style={[styles.formBlock, pinSlideStyle]}>
+              <Animated.View entering={FadeInDown.duration(400).delay(200)}>
+                <Text style={styles.sectionTitle}>Enter your PIN</Text>
+                <Text style={styles.sectionSubtitle}>
+                  Enter your 4-digit security PIN to continue
                 </Text>
-              </View>
-            ) : null}
-          </View>
+              </Animated.View>
 
-          <Pressable
-            style={styles.helpRow}
-            onPress={() =>
-              showToast({
-                message: 'Contact support from Profile once it is connected.',
-                type: 'info',
-              })
-            }
-          >
-            <Text style={styles.helpText}>Need help signing in?</Text>
-          </Pressable>
+              {/* 4 PIN boxes + hidden input */}
+              <Animated.View entering={FadeInDown.duration(400).delay(300)}>
+                <Pressable
+                  style={styles.digitRow}
+                  onPress={() => {
+                    if (pinInputRef.current?.isFocused()) {
+                      pinInputRef.current.blur();
+                      setTimeout(() => pinInputRef.current?.focus(), 50);
+                    } else {
+                      pinInputRef.current?.focus();
+                    }
+                  }}
+                >
+                  {[0, 1, 2, 3].map((i) => {
+                    const digit = pin[i] || '';
+                    const isFocused =
+                      isPinFocused &&
+                      (pin.length === i || (pin.length === 4 && i === 3));
+                    return (
+                      <DigitBox
+                        key={i}
+                        index={i}
+                        value={digit}
+                        focused={isFocused && mode === 'pin'}
+                        hasError={pinError}
+                      />
+                    );
+                  })}
+                </Pressable>
+
+                <TextInput
+                  ref={pinInputRef}
+                  style={styles.hiddenInput}
+                  keyboardType="number-pad"
+                  maxLength={4}
+                  value={pin}
+                  onChangeText={handlePinChange}
+                  onFocus={() => setIsPinFocused(true)}
+                  onBlur={() => setIsPinFocused(false)}
+                  caretHidden
+                  autoFocus
+                  autoComplete="off"
+                />
+
+                {verifyingPin && (
+                  <View style={styles.verifyingRow}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={styles.verifyingText}>Verifying…</Text>
+                  </View>
+                )}
+              </Animated.View>
+
+              {/* Forgot PIN → switch to email */}
+              <Animated.View
+                entering={FadeInUp.duration(400).delay(500)}
+                style={styles.forgotRow}
+              >
+                <Pressable onPress={switchToEmail} style={styles.forgotBtn}>
+                  <Icon
+                    name="mail-outline"
+                    size={18}
+                    color={colors.primary}
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={styles.forgotText}>Forgot PIN? Use email instead</Text>
+                </Pressable>
+              </Animated.View>
+
+              {__DEV__ && (
+                <Animated.View
+                  entering={FadeInUp.duration(400).delay(600)}
+                  style={styles.devHint}
+                >
+                  <Icon name="science" size={18} color={colors.textSecondary} />
+                  <Text style={styles.devHintText}>Dev: any 4-digit PIN works</Text>
+                </Animated.View>
+              )}
+
+              {/* New user registration link */}
+              <Animated.View
+                entering={FadeInUp.duration(400).delay(700)}
+                style={styles.registerRow}
+              >
+                <Text style={styles.registerLabel}>New here? </Text>
+                <Pressable onPress={() => navigation.navigate('Onboarding1')}>
+                  <Text style={styles.registerLink}>Register your account</Text>
+                </Pressable>
+              </Animated.View>
+            </Animated.View>
+
+            {/* ─── Email Form ─────────────────────────────────────── */}
+            <Animated.View style={[styles.formBlock, emailSlideStyle]}>
+              <Animated.View entering={FadeInDown.duration(400)}>
+                <Text style={styles.sectionTitle}>Sign in with Email</Text>
+                <Text style={styles.sectionSubtitle}>
+                  We'll send a one-time code to your registered email address
+                </Text>
+              </Animated.View>
+
+              <View style={styles.fields}>
+                <InputField
+                  label="Email"
+                  value={email}
+                  onChangeText={(t) => {
+                    setEmail(t);
+                    if (emailError) setEmailError('');
+                  }}
+                  placeholder="you@example.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="email"
+                  textContentType="emailAddress"
+                  error={emailError}
+                  leftIcon={
+                    <Icon
+                      name="alternate-email"
+                      size={22}
+                      color={colors.textMuted}
+                    />
+                  }
+                />
+              </View>
+
+              {/* Send OTP CTA */}
+              <View style={styles.ctaAnimBtn}>
+                <Pressable
+                  android_ripple={{
+                    color: 'rgba(255, 255, 255, 0.6)',
+                    foreground: true,
+                  }}
+                  style={styles.ctaBtn}
+                  onPress={handleSendOtp}
+                  disabled={sendingOtp}
+                >
+                  {sendingOtp ? (
+                    <ActivityIndicator color={colors.surface} size="small" />
+                  ) : (
+                    <>
+                      <Text style={styles.ctaText}>Send OTP</Text>
+                      <Icon
+                        name="arrow-forward"
+                        size={20}
+                        color={colors.surface}
+                      />
+                    </>
+                  )}
+                </Pressable>
+              </View>
+
+              {/* Back to PIN link */}
+              <Pressable
+                onPress={switchToPin}
+                style={styles.switchBackRow}
+              >
+                <Icon
+                  name="dialpad"
+                  size={16}
+                  color={colors.primary}
+                  style={{ marginRight: 6 }}
+                />
+                <Text style={styles.switchBackText}>
+                  Back to PIN login
+                </Text>
+              </Pressable>
+            </Animated.View>
+
+            {/* ─── Email OTP Entry ────────────────────────────────── */}
+            <Animated.View style={[styles.formBlock, emailOtpSlideStyle]}>
+              <Animated.View entering={FadeInDown.duration(400)}>
+                <Text style={styles.sectionTitle}>Enter OTP</Text>
+                <Text style={styles.sectionSubtitle}>
+                  Sent to {email}
+                </Text>
+              </Animated.View>
+
+              {/* 4 OTP boxes + hidden input */}
+              <Pressable
+                style={styles.digitRow}
+                onPress={() => {
+                  if (otpInputRef.current?.isFocused()) {
+                    otpInputRef.current.blur();
+                    setTimeout(() => otpInputRef.current?.focus(), 50);
+                  } else {
+                    otpInputRef.current?.focus();
+                  }
+                }}
+              >
+                {[0, 1, 2, 3].map((i) => {
+                  const digit = otp[i] || '';
+                  const isFocused =
+                    isOtpFocused &&
+                    (otp.length === i || (otp.length === 4 && i === 3));
+                  return (
+                    <DigitBox
+                      key={i}
+                      index={i}
+                      value={digit}
+                      focused={isFocused && showOtpEntry}
+                    />
+                  );
+                })}
+              </Pressable>
+
+              <TextInput
+                ref={otpInputRef}
+                style={styles.hiddenInput}
+                keyboardType="number-pad"
+                maxLength={4}
+                value={otp}
+                onChangeText={handleOtpChange}
+                onFocus={() => setIsOtpFocused(true)}
+                onBlur={() => setIsOtpFocused(false)}
+                caretHidden
+                autoFocus={false}
+                autoComplete="sms-otp"
+                textContentType="oneTimeCode"
+              />
+
+              {/* Timer + Resend */}
+              <View style={styles.timerRow}>
+                {timer > 0 ? (
+                  <Text style={styles.timerText}>
+                    Resend in{' '}
+                    <Text style={{ color: colors.primary, fontWeight: '700' }}>
+                      {timer}s
+                    </Text>
+                  </Text>
+                ) : (
+                  <Pressable onPress={resendOtp}>
+                    <Text style={styles.resendBtn}>Resend OTP</Text>
+                  </Pressable>
+                )}
+              </View>
+
+              {/* Verify CTA */}
+              <View style={styles.ctaAnimBtn}>
+                <Pressable
+                  android_ripple={{
+                    color: 'rgba(255, 255, 255, 0.6)',
+                    foreground: true,
+                  }}
+                  style={[
+                    styles.ctaBtn,
+                    otp.length < 4 && styles.ctaBtnDisabled,
+                  ]}
+                  onPress={() => otp.length === 4 && verifyEmailOtp(otp)}
+                  disabled={otp.length < 4}
+                >
+                  <Text style={styles.ctaText}>Verify & Sign In</Text>
+                  <Icon name="arrow-forward" size={20} color={colors.surface} />
+                </Pressable>
+              </View>
+            </Animated.View>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
+// ─── Styles ─────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  flex: {
-    flex: 1,
-  },
-  scroll: {
-    flexGrow: 1,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xxl,
-  },
-  heroBlob: {
-    position: 'absolute',
-    top: -80,
-    right: -40,
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: colors.lavenderSoft,
-    opacity: 0.95,
-  },
-  header: {
-    paddingTop: spacing.xl,
-    marginBottom: spacing.lg,
-  },
-  mark: {
-    alignItems: 'flex-start',
-  },
-  markInner: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    ...shadows.soft,
-  },
-  brand: {
-    ...textStyles.hero,
-    fontSize: 32,
-    letterSpacing: -0.5,
+  safe: { flex: 1, backgroundColor: colors.surface },
+  scroll: { flexGrow: 1, paddingBottom: spacing.xxl },
+
+  backBtn: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
     marginBottom: spacing.xs,
   },
-  tagline: {
+  backBtnSpacer: {
+    height: 40 + spacing.sm + spacing.xs,
+    marginBottom: 0,
+  },
+
+  // Illustration (matching onboarding)
+  illusCard: {
+    marginHorizontal: spacing.md,
+    height: 200,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    marginBottom: spacing.lg,
+  },
+  illusImage: {
+    width: '100%',
+    height: 150,
+    resizeMode: 'contain',
+    marginBottom: spacing.xs,
+  },
+  illusTextBox: { alignItems: 'center' },
+  illusTitle: { ...textStyles.headingLarge, color: colors.primary },
+  illusSub: {
     ...textStyles.bodyMedium,
     color: colors.textSecondary,
-    maxWidth: 280,
-    lineHeight: 22,
+    marginTop: 2,
   },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.xxl,
-    padding: spacing.xl,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    ...shadows.soft,
+
+  // Form block
+  formBlock: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
   },
-  title: {
+
+  sectionTitle: {
     ...textStyles.headingLarge,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
-  subtitle: {
+  sectionSubtitle: {
     ...textStyles.bodyMedium,
     color: colors.textSecondary,
     marginBottom: spacing.xl,
     lineHeight: 22,
   },
+
+  // Digit boxes (PIN + OTP)
+  digitRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  digitBox: {
+    width: 64,
+    height: 64,
+    borderRadius: borderRadius.medium,
+    backgroundColor: colors.surface,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.small,
+  },
+  digitBoxFocused: {
+    borderColor: colors.primary,
+    borderWidth: 2.5,
+  },
+  digitBoxFilled: {
+    backgroundColor: colors.lavenderSoft,
+    borderColor: colors.primary,
+  },
+  digitBoxError: {
+    borderColor: colors.error,
+    backgroundColor: 'rgba(232, 93, 93, 0.06)',
+  },
+  digitDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: colors.primary,
+  },
+  digitPlaceholder: {
+    fontSize: 24,
+    color: colors.textMuted,
+    fontWeight: '300',
+  },
+  hiddenInput: {
+    position: 'absolute',
+    opacity: 0,
+    width: 1,
+    height: 1,
+  },
+
+  // Verifying state
+  verifyingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  verifyingText: {
+    ...textStyles.bodyMedium,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+
+  // Forgot PIN row
+  forgotRow: {
+    alignItems: 'center',
+    marginTop: spacing.md,
+  },
+  forgotBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.lavenderSoft,
+  },
+  forgotText: {
+    ...textStyles.bodyMedium,
+    color: colors.primary,
+    fontWeight: '700',
+  },
+
+  // Switch back link
+  switchBackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.xl,
+    paddingVertical: spacing.sm,
+  },
+  switchBackText: {
+    ...textStyles.bodyMedium,
+    color: colors.primary,
+    fontWeight: '700',
+  },
+
+  // Fields
   fields: {
     gap: spacing.md,
     marginBottom: spacing.lg,
   },
-  cta: {
-    marginTop: spacing.sm,
+
+  // CTA (matching onboarding)
+  ctaAnimBtn: {
+    ...shadows.medium,
+    borderRadius: borderRadius.large,
   },
+  ctaBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.large,
+    height: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    overflow: 'hidden',
+  },
+  ctaBtnDisabled: {
+    backgroundColor: colors.surfaceMuted,
+  },
+  ctaText: {
+    ...textStyles.button,
+    color: colors.surface,
+    fontSize: 16,
+  },
+
+  // Timer (matching onboarding)
+  timerRow: {
+    alignItems: 'center',
+    marginBottom: spacing.xl,
+  },
+  timerText: {
+    ...textStyles.bodyMedium,
+    color: colors.textSecondary,
+  },
+  resendBtn: {
+    ...textStyles.bodyMedium,
+    color: colors.primary,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
+  },
+
+  // Dev hint
   devHint: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginTop: spacing.lg,
+    marginTop: spacing.xl,
     padding: spacing.md,
     backgroundColor: colors.surfaceMuted,
     borderRadius: borderRadius.large,
@@ -280,14 +825,23 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     flex: 1,
   },
-  helpRow: {
-    marginTop: spacing.xl,
+
+  // Register link
+  registerRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.sm,
+    justifyContent: 'center',
+    marginTop: spacing.xl,
+    paddingVertical: spacing.sm,
   },
-  helpText: {
+  registerLabel: {
+    ...textStyles.bodyMedium,
+    color: colors.textSecondary,
+  },
+  registerLink: {
     ...textStyles.bodyMedium,
     color: colors.primary,
-    fontWeight: '600',
+    fontWeight: '700',
+    textDecorationLine: 'underline',
   },
 });

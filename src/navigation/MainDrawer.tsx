@@ -7,6 +7,8 @@ import AnnouncementsScreen from '../screens/AnnouncementsScreen';
 import QuizzesScreen from '../screens/QuizzesScreen';
 import SessionsScreen from '../screens/SessionsScreen';
 import TutorialsScreen from '../screens/TutorialsScreen';
+import BadgesScreen from '../screens/BadgesScreen';
+import NotificationsScreen from '../screens/NotificationsScreen';
 
 const Drawer = createDrawerNavigator();
 
@@ -54,6 +56,14 @@ const MainDrawer = () => {
       <Drawer.Screen
         name="Tutorials"
         component={TutorialsScreen}
+      />
+      <Drawer.Screen
+        name="Badges"
+        component={BadgesScreen}
+      />
+      <Drawer.Screen
+        name="Notifications"
+        component={NotificationsScreen}
       />
     </Drawer.Navigator>
   );

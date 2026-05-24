@@ -133,16 +133,6 @@ export default function MissionsScreen({ navigation }: Props) {
 		[showToast]
 	);
 
-	const uploadProof = useCallback(
-		(mission: MentorMission) => {
-			showToast({
-				type: 'info',
-				message: `Upload flow for "${mission.title}" will be connected next.`,
-			});
-		},
-		[showToast]
-	);
-
 	const openDetails = useCallback(
 		(mission: MentorMission) => {
 			navigation.navigate('MissionDetail', { mission });
@@ -293,16 +283,6 @@ export default function MissionsScreen({ navigation }: Props) {
 									</View>
 								</View>
 							) : null}
-
-							{/* {mission.missionType==='activity-based'? (
-								<Button
-									title="Upload Proof"
-									size="small"
-									variant="primary"
-									onPress={() => uploadProof(mission)}
-									style={styles.uploadBtn}
-								/>
-							):null} */}
 
 						</Animated.View>
 					);
@@ -544,9 +524,5 @@ const styles = StyleSheet.create({
 			},
 			default: {},
 		}),
-	},
-	uploadBtn: {
-		marginTop: spacing.sm,
-		marginVertical: 0,
 	},
 });

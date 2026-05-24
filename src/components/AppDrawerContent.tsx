@@ -25,6 +25,7 @@ const MENU_ITEMS = [
   { key: 'sessions', label: 'Sessions', icon: 'event', route: 'Sessions' as const },
   { key: 'quizzes', label: 'Quizzes', icon: 'poll', route: 'Quizzes' as const },
   { key: 'announcements', label: 'Announcements', icon: 'campaign', route: 'Announcements' as const },
+  { key: 'badges', label: 'Badges', icon: 'military-tech', route: 'Badges' as const },
   { key: 'tutorials', label: 'Tutorials', icon: 'menu-book', route: 'Tutorials' as const },
 ] as const;
 
