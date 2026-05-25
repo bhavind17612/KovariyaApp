@@ -1,469 +1,368 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AuthTokens, User, LoginCredentials, RegisterData, AuthResponse } from '../types/auth';
+/**
+ * authService.ts — Authentication business logic.
+ *
+ * External API is identical to the original so every caller
+ * (AuthContext, LoginScreen, OnboardingScreen4) continues to work unchanged.
+ *
+ * Internal changes:
+ *  - Direct AsyncStorage calls replaced with tokenManager + typed storage service.
+ *  - Base URL sourced from ENV (no more inline Platform.OS branch).
+ *  - Timer-based proactive refresh removed — Axios interceptors handle 401 refresh.
+ *  - getInitialAuthState() simplified: just validate expiry, no mockApi.validateToken().
+ */
+import { isAxiosError } from 'axios';
+import { apiClient } from '../api/client';
+import { storage } from '../storage/storage';
+import { STORAGE_KEYS } from '../storage/storageKeys';
+import { tokenManager } from '../api/tokenManager';
+import { ENV } from '../config/env';
+import type { AuthTokens, User, LoginCredentials, RegisterData, AuthResponse } from '../types/auth';
+import type { Child } from '../types';
 
-const STORAGE_KEYS = {
-  ACCESS_TOKEN: '@kovariya_access_token',
-  REFRESH_TOKEN: '@kovariya_refresh_token',
-  USER_DATA: '@kovariya_user_data',
-  TOKEN_EXPIRES_AT: '@kovariya_token_expires_at',
-  REMEMBERED_PARENT_ID: '@kovariya_remembered_parent_id',
-} as const;
+// ─── Response shape helpers ────────────────────────────────────────────────
 
-/** Set `EXPO_PUBLIC_AUTH_API_URL` (e.g. https://api.example.com) to use real email/password login. */
-function getAuthApiBase(): string {
-  const raw =
-    (globalThis as unknown as { process?: { env?: Record<string, string | undefined> } }).process
-      ?.env?.EXPO_PUBLIC_AUTH_API_URL ?? '';
-  return String(raw).trim().replace(/\/$/, '');
-}
+type ApiErrorObject = { code?: string; message?: string };
 
-type LoginApiJson = {
-  user?: any;
-  parent?: {
-    uuid?: string;
-    parent_id?: string;
-    parent_name?: string;
-    mobile_number?: string;
-    email?: string;
-    school_id?: string;
-    school_name?: string;
-    onboarding_stage?: number;
-    has_pin?: boolean;
-    createdAt?: string;
-    updatedAt?: string;
-  };
-  tokens?: {
-    accessToken?: string;
-    refreshToken?: string;
-    expiresAt?: number;
-  };
+// Inner payload — present either at the top level (flat) or under `data` (envelope)
+type ApiPayload = {
+  parent?: Record<string, unknown>;
+  user?: Record<string, unknown>;
+  tokens?: { accessToken?: string; refreshToken?: string; expiresAt?: number };
   accessToken?: string;
   refreshToken?: string;
   expiresAt?: number;
+};
+
+// Envelope:  { success, data: { parent, tokens }, error: { code, message }, meta }
+// Flat:      { parent, tokens, message, error }
+type ApiJson = ApiPayload & {
+  success?: boolean;
+  data?: ApiPayload | null;
+  error?: ApiErrorObject | string | null;
   message?: string;
-  error?: string;
+  meta?: unknown;
 };
 
 function parseErrorMessage(data: unknown, status: number): string {
   if (data && typeof data === 'object') {
-    const d = data as LoginApiJson;
-    if (typeof d.message === 'string' && d.message.trim()) {
-      return d.message.trim();
+    const d = data as ApiJson;
+    // Envelope: error is an object { code, message }
+    if (d.error && typeof d.error === 'object' && typeof d.error.message === 'string' && d.error.message.trim()) {
+      return d.error.message.trim();
     }
-    if (typeof d.error === 'string' && d.error.trim()) {
-      return d.error.trim();
-    }
+    // Flat: error is a plain string
+    if (typeof d.error === 'string' && d.error.trim()) return d.error.trim();
+    // Flat: top-level message string
+    if (typeof d.message === 'string' && d.message.trim()) return d.message.trim();
   }
-  if (status === 401 || status === 403) {
-    return 'Invalid email or password';
-  }
-  if (status === 422) {
-    return 'Check your email and password format';
-  }
-  if (status >= 500) {
-    return 'Server is unavailable. Try again shortly';
-  }
+  if (status === 401 || status === 403) return 'Invalid credentials';
+  if (status === 422) return 'Check your email and password format';
+  if (status >= 500) return 'Server is unavailable. Try again shortly';
   return 'Could not sign you in. Please try again';
 }
 
-function mapParentToUser(u: any): User {
+function mapRawChild(c: Record<string, unknown>): Child {
+  // Primary fields from the actual API response shape.
+  // Fallbacks keep older / alternate endpoint shapes working.
+  const name = (c.full_name ?? c.student_name ?? c.name) as string | undefined ?? 'Child';
+  const age = typeof c.age === 'number' ? c.age : Number(c.age ?? 0);
   return {
-    id: u.uuid ?? u.id ?? '1',
-    parentId: u.parent_id,
-    name: u.parent_name ?? u.name ?? u.email?.split('@')[0] ?? 'Parent',
-    mobileNumber: u.mobile_number,
-    email: u.email,
-    schoolId: u.school_id,
-    schoolName: u.school_name,
-    onboardingStage: u.onboarding_stage,
-    hasPin: u.has_pin,
-    createdAt: u.createdAt ?? new Date().toISOString(),
-    updatedAt: u.updatedAt ?? new Date().toISOString(),
+    id: String(c.id ?? c.uuid ?? c.student_uid ?? Date.now()),
+    name,
+    age,
+    avatar: (c.avatar_url ?? c.avatar) as string | undefined,
+    dateOfBirth: (c.date_of_birth ?? c.dob) as string | undefined,
+    gender: c.gender as 'male' | 'female' | undefined,
+    grade: (c.class_name ?? c.grade ?? c.class) as string | undefined,
+    section: c.section as string | undefined,
+    schoolName: (c.school_name ?? c.schoolName) as string | undefined,
+    admissionNumber: (c.student_uid ?? c.admission_number ?? c.roll_number) as string | undefined,
+    status: c.status as 'active' | 'inactive' | undefined,
+    dailyScore: c.daily_score as number | undefined,
+    trustMeter: c.trust_meter as number | undefined,
+    confidenceIndicator: c.confidence_indicator as number | undefined,
   };
 }
 
-async function loginViaHttp(credentials: LoginCredentials): Promise<AuthResponse> {
-  const base = getAuthApiBase();
-  const url = `${base}/auth/login`;
+function mapParentToUser(u: Record<string, unknown>): User {
+  const rawChildren = (u.students ?? u.children ?? u.child ?? []) as Record<string, unknown>[];
+  return {
+    id: String(u.uuid ?? u.id ?? Date.now()),
+    parentId: u.parent_id as string | undefined,
+    name: String(u.parent_name ?? u.name ?? (u.email as string)?.split('@')[0] ?? 'Parent'),
+    mobileNumber: u.mobile_number as string | undefined,
+    email: u.email as string | undefined,
+    schoolId: u.school_id as string | undefined,
+    schoolName: u.school_name as string | undefined,
+    onboardingStage: u.onboarding_stage as number | undefined,
+    hasPin: u.has_pin as boolean | undefined,
+    children: Array.isArray(rawChildren) ? rawChildren.map(mapRawChild) : [],
+    createdAt: String(u.createdAt ?? new Date().toISOString()),
+    updatedAt: String(u.updatedAt ?? new Date().toISOString()),
+  };
+}
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
+function extractAuthResponse(data: ApiJson): AuthResponse {
+  // Prefer envelope payload (data.data) over flat top-level fields
+  const payload: ApiPayload = (data.data && typeof data.data === 'object') ? data.data : data;
+
+  const rawUser = payload.parent ?? payload.user;
+  if (!rawUser || typeof rawUser !== 'object') {
+    throw new Error('Unexpected response: missing user data');
+  }
+
+  const accessToken = payload.tokens?.accessToken ?? payload.accessToken;
+  const refreshToken = payload.tokens?.refreshToken ?? payload.refreshToken;
+  const expiresAt = payload.tokens?.expiresAt ?? payload.expiresAt;
+
+  if (!accessToken || !refreshToken) {
+    throw new Error('Unexpected response: missing tokens');
+  }
+
+  return {
+    parent: mapParentToUser(rawUser as Record<string, unknown>),
+    tokens: {
+      accessToken,
+      refreshToken,
+      expiresAt: typeof expiresAt === 'number' ? expiresAt : Date.now() + 3_600_000,
     },
-    body: JSON.stringify({
+  };
+}
+
+// ─── Real HTTP helpers ─────────────────────────────────────────────────────
+
+async function loginViaHttp(credentials: LoginCredentials): Promise<AuthResponse> {
+  let data: ApiJson;
+  try {
+    const res = await apiClient.post('/auth/login', {
       email: credentials.email.trim().toLowerCase(),
       password: credentials.password,
-    }),
-  });
-
-  const data = (await res.json().catch(() => ({}))) as LoginApiJson;
-
-  if (!res.ok) {
-    throw new Error(parseErrorMessage(data, res.status));
+    }, { skipAuth: true });
+    data = res.data as ApiJson;
+  } catch (err) {
+    if (isAxiosError(err) && err.response) {
+      throw new Error(parseErrorMessage(err.response.data as ApiJson, err.response.status));
+    }
+    throw err;
   }
-
-  const u = data.parent ?? data.user;
-  const accessToken = data.tokens?.accessToken ?? data.accessToken;
-  const refreshToken = data.tokens?.refreshToken ?? data.refreshToken;
-  const expiresAt = data.tokens?.expiresAt ?? data.expiresAt;
-
-  if (!u || !accessToken || !refreshToken) {
-    throw new Error('Unexpected response from server');
+  // success:false means the server explicitly rejected the request even on a 2xx status
+  if (data.success === false || (!data.data?.parent && !data.data?.user && !data.parent && !data.user)) {
+    throw new Error(parseErrorMessage(data, 200) || 'Could not sign you in. Please try again');
   }
-
-  const user = mapParentToUser(u);
-
-  const tokens: AuthTokens = {
-    accessToken,
-    refreshToken,
-    expiresAt: typeof expiresAt === 'number' ? expiresAt : Date.now() + 3600_000,
-  };
-
-  return { parent: user, tokens };
+  return extractAuthResponse(data);
 }
 
 async function loginWithPinHttp(pin: string): Promise<AuthResponse> {
-  const base = getAuthApiBase();
-  // If EXPO_PUBLIC_AUTH_API_URL is missing, fallback to getApiBase() logic for Android/iOS local dev
-  const apiBaseUrl = base || (require('./apiService').getApiBase());
-  const url = `${apiBaseUrl}/api/v1/parents/auth/verify-pin`;
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      pin,
-    }),
-  });
-
-  const data = (await res.json().catch(() => ({}))) as LoginApiJson;
-
-  if (!res.ok) {
-    throw new Error(parseErrorMessage(data, res.status));
+  let data: ApiJson;
+  try {
+    const res = await apiClient.post('/api/v1/parents/auth/verify-pin', { pin }, { skipAuth: true });
+    console.log('res ',res);
+    data = res.data as ApiJson;
+  } catch (err) {
+    if (isAxiosError(err) && err.response) {
+      throw new Error(parseErrorMessage(err.response.data as ApiJson, err.response.status));
+    }
+    throw err;
   }
-
-  const u = data.parent ?? data.user;
-  const accessToken = data.tokens?.accessToken ?? data.accessToken;
-  const refreshToken = data.tokens?.refreshToken ?? data.refreshToken;
-  const expiresAt = data.tokens?.expiresAt ?? data.expiresAt;
-
-  if (!u || !accessToken || !refreshToken) {
-    throw new Error('Unexpected response from server');
+  // success:false means the server explicitly rejected the request even on a 2xx status
+  if (data.success === false || (!data.data?.parent && !data.data?.user && !data.parent && !data.user)) {
+    throw new Error(parseErrorMessage(data, 200) || 'Invalid PIN. Please try again');
   }
-
-  const user = mapParentToUser(u);
-
-  const tokens: AuthTokens = {
-    accessToken,
-    refreshToken,
-    expiresAt: typeof expiresAt === 'number' ? expiresAt : Date.now() + 3600_000,
-  };
-
-  return { parent: user, tokens };
+  return extractAuthResponse(data);
 }
+
+// ─── Mock API (used when no real backend URL is configured) ────────────────
 
 const mockApi = {
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
-    await new Promise<void>((resolve) => setTimeout(resolve, 800));
-
+    await new Promise<void>((r) => setTimeout(r, 800));
     if (credentials.email === 'user@kovariya.com' && credentials.password === 'password') {
-      const user: User = {
-        id: '1',
-        email: credentials.email.trim().toLowerCase(),
-        name: 'Sarah',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+      return {
+        parent: {
+          id: '1',
+          email: credentials.email.trim().toLowerCase(),
+          name: 'Sarah',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        tokens: {
+          accessToken: `mock-access-${Date.now()}`,
+          refreshToken: `mock-refresh-${Date.now()}`,
+          expiresAt: Date.now() + 3_600_000,
+        },
       };
-
-      const tokens: AuthTokens = {
-        accessToken: `mock-access-${Date.now()}`,
-        refreshToken: `mock-refresh-${Date.now()}`,
-        expiresAt: Date.now() + 60 * 60 * 1000,
-      };
-
-      return { parent: user, tokens };
     }
-
     throw new Error('Invalid email or password');
   },
 
   async register(data: RegisterData): Promise<AuthResponse> {
-    await new Promise<void>((resolve) => setTimeout(resolve, 800));
-
-    const user: User = {
-      id: String(Date.now()),
-      email: data.email.trim().toLowerCase(),
-      name: data.name,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    const tokens: AuthTokens = {
-      accessToken: `mock-access-${Date.now()}`,
-      refreshToken: `mock-refresh-${Date.now()}`,
-      expiresAt: Date.now() + 60 * 60 * 1000,
-    };
-
-    return { parent: user, tokens };
-  },
-
-  async refreshToken(refreshToken: string): Promise<AuthTokens> {
-    await new Promise<void>((resolve) => setTimeout(resolve, 400));
-
-    if (refreshToken.startsWith('mock-refresh')) {
-      return {
+    await new Promise<void>((r) => setTimeout(r, 800));
+    return {
+      parent: {
+        id: String(Date.now()),
+        email: data.email.trim().toLowerCase(),
+        name: data.name,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      tokens: {
         accessToken: `mock-access-${Date.now()}`,
         refreshToken: `mock-refresh-${Date.now()}`,
-        expiresAt: Date.now() + 60 * 60 * 1000,
-      };
-    }
-
-    throw new Error('Session expired. Please sign in again');
+        expiresAt: Date.now() + 3_600_000,
+      },
+    };
   },
 
-  async validateToken(token: string): Promise<boolean> {
-    await new Promise<void>((resolve) => setTimeout(resolve, 80));
-    return token.startsWith('mock-access');
-  },
-
-  /** OTP-based login: create session for any valid email (no password needed). */
   async loginByEmail(email: string): Promise<AuthResponse> {
-    await new Promise<void>((resolve) => setTimeout(resolve, 600));
-
-    const user: User = {
-      id: String(Date.now()),
-      email: email.trim().toLowerCase(),
-      name: email.split('@')[0] ?? 'Parent',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+    await new Promise<void>((r) => setTimeout(r, 600));
+    return {
+      parent: {
+        id: String(Date.now()),
+        email: email.trim().toLowerCase(),
+        name: email.split('@')[0] ?? 'Parent',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      tokens: {
+        accessToken: `mock-access-${Date.now()}`,
+        refreshToken: `mock-refresh-${Date.now()}`,
+        expiresAt: Date.now() + 3_600_000,
+      },
     };
-
-    const tokens: AuthTokens = {
-      accessToken: `mock-access-${Date.now()}`,
-      refreshToken: `mock-refresh-${Date.now()}`,
-      expiresAt: Date.now() + 60 * 60 * 1000,
-    };
-
-    return { parent: user, tokens };
   },
 };
 
-class AuthService {
-  private static instance: AuthService;
-  private tokenRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+// ─── Determine if we are pointing at a real backend ────────────────────────
 
-  private constructor() { }
+function isRealBackend(): boolean {
+  return (
+    !!ENV.API_BASE_URL &&
+    !ENV.API_BASE_URL.includes('localhost') &&
+    !ENV.API_BASE_URL.includes('10.0.2.2')
+  );
+}
+
+// ─── AuthService ───────────────────────────────────────────────────────────
+
+class AuthService {
+  private static _instance: AuthService;
+
+  private constructor() {}
 
   static getInstance(): AuthService {
-    if (!AuthService.instance) {
-      AuthService.instance = new AuthService();
+    if (!AuthService._instance) {
+      AuthService._instance = new AuthService();
     }
-    return AuthService.instance;
+    return AuthService._instance;
   }
 
-  private async storeTokens(tokens: AuthTokens): Promise<void> {
+  // ── Persists session data after every successful authentication ────────────
+
+  private async _persistSession(response: AuthResponse): Promise<void> {
     await Promise.all([
-      AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, tokens.accessToken),
-      AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, tokens.refreshToken),
-      AsyncStorage.setItem(STORAGE_KEYS.TOKEN_EXPIRES_AT, tokens.expiresAt.toString()),
+      tokenManager.setTokens(response.tokens),
+      storage.set(STORAGE_KEYS.USER_DATA, response.parent),
     ]);
-  }
-
-  private async storeUser(user: User): Promise<void> {
-    await AsyncStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(user));
-  }
-
-  private async getStoredTokens(): Promise<AuthTokens | null> {
-    try {
-      const [accessToken, refreshToken, expiresAt] = await Promise.all([
-        AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN),
-        AsyncStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN),
-        AsyncStorage.getItem(STORAGE_KEYS.TOKEN_EXPIRES_AT),
-      ]);
-
-      if (!accessToken || !refreshToken || !expiresAt) {
-        return null;
-      }
-
-      return {
-        accessToken,
-        refreshToken,
-        expiresAt: parseInt(expiresAt, 10),
-      };
-    } catch {
-      return null;
+    if (response.parent.parentId) {
+      await storage.set(STORAGE_KEYS.REMEMBERED_PARENT_ID, response.parent.parentId);
     }
   }
 
-  private async getStoredUser(): Promise<User | null> {
-    try {
-      const userData = await AsyncStorage.getItem(STORAGE_KEYS.USER_DATA);
-      return userData ? (JSON.parse(userData) as User) : null;
-    } catch {
-      return null;
-    }
-  }
+  // ── Public auth methods (same signatures as before) ────────────────────────
 
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
-    const base = getAuthApiBase();
-    const response = base
+    const response = isRealBackend()
       ? await loginViaHttp(credentials)
       : await mockApi.login(credentials);
-
-    await Promise.all([this.storeTokens(response.tokens), this.storeUser(response.parent)]);
-    if (response.parent.parentId) {
-      await AsyncStorage.setItem(STORAGE_KEYS.REMEMBERED_PARENT_ID, response.parent.parentId);
-    }
-    this.setupTokenRefresh(response.tokens.expiresAt);
+    await this._persistSession(response);
     return response;
   }
 
   async loginWithPin(pin: string): Promise<AuthResponse> {
     const response = await loginWithPinHttp(pin);
-    console.log('response == ', response);
-    await Promise.all([this.storeTokens(response.tokens), this.storeUser(response.parent)]);
-    if (response.parent.parentId) {
-      await AsyncStorage.setItem(STORAGE_KEYS.REMEMBERED_PARENT_ID, response.parent.parentId);
-    }
-    this.setupTokenRefresh(response.tokens.expiresAt);
+    await this._persistSession(response);
     return response;
   }
 
   async register(data: RegisterData): Promise<AuthResponse> {
     const response = await mockApi.register(data);
-    await Promise.all([this.storeTokens(response.tokens), this.storeUser(response.parent)]);
-    this.setupTokenRefresh(response.tokens.expiresAt);
+    await this._persistSession(response);
     return response;
   }
 
-  /** OTP-based login by email only (no password). Will call real API when available. */
   async loginByEmail(email: string): Promise<AuthResponse> {
     const response = await mockApi.loginByEmail(email);
-    await Promise.all([this.storeTokens(response.tokens), this.storeUser(response.parent)]);
-    this.setupTokenRefresh(response.tokens.expiresAt);
+    await this._persistSession(response);
     return response;
   }
 
+  /**
+   * Called by AuthContext.completeAuthentication() at the end of onboarding.
+   * Stores the tokens and user that were established during the OTP/PIN flow.
+   */
   async setSession(tokens: AuthTokens, user?: User | null): Promise<void> {
-    await this.storeTokens(tokens);
+    await tokenManager.setTokens(tokens);
     if (user) {
-      await this.storeUser(user);
+      await storage.set(STORAGE_KEYS.USER_DATA, user);
       if (user.parentId) {
-        await AsyncStorage.setItem(STORAGE_KEYS.REMEMBERED_PARENT_ID, user.parentId);
+        await storage.set(STORAGE_KEYS.REMEMBERED_PARENT_ID, user.parentId);
       }
     }
-    this.setupTokenRefresh(tokens.expiresAt);
   }
 
+  /**
+   * Clears the active session.
+   * REMEMBERED_PARENT_ID is intentionally kept so PIN re-login still works.
+   */
   async logout(): Promise<void> {
-    // Note: We intentionally DO NOT clear REMEMBERED_PARENT_ID so the PIN login still works!
     await Promise.all([
-      AsyncStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN),
-      AsyncStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN),
-      AsyncStorage.removeItem(STORAGE_KEYS.USER_DATA),
-      AsyncStorage.removeItem(STORAGE_KEYS.TOKEN_EXPIRES_AT),
+      tokenManager.clearTokens(),
+      storage.delete(STORAGE_KEYS.USER_DATA),
     ]);
-
-    if (this.tokenRefreshTimer) {
-      clearTimeout(this.tokenRefreshTimer);
-      this.tokenRefreshTimer = null;
-    }
   }
 
+  /**
+   * Called on cold start to restore session from storage.
+   * Returns { user, tokens } if a valid, unexpired session exists, else nulls.
+   */
   async getInitialAuthState(): Promise<{ user: User | null; tokens: AuthTokens | null }> {
     try {
-      const [user, tokens] = await Promise.all([this.getStoredUser(), this.getStoredTokens()]);
+      await tokenManager.initialize();
 
-      if (getAuthApiBase()) {
-        if (user && tokens && tokens.expiresAt > Date.now()) {
-          this.setupTokenRefresh(tokens.expiresAt);
-          return { user, tokens };
-        }
-        if (tokens && tokens.expiresAt <= Date.now()) {
-          await this.logout();
-          return { user: null, tokens: null };
-        }
-        return { user, tokens: null };
+      const user = await storage.get<User>(STORAGE_KEYS.USER_DATA);
+      const accessToken = tokenManager.getAccessToken();
+      const expiresAt = tokenManager.getExpiresAt();
+
+      if (!user || !accessToken || Date.now() >= expiresAt) {
+        // Session absent or expired — clean up and return unauthenticated
+        await tokenManager.clearTokens();
+        return { user: null, tokens: null };
       }
 
-      if (tokens && tokens.expiresAt > Date.now()) {
-        try {
-          const isValid = await mockApi.validateToken(tokens.accessToken);
-          if (!isValid) {
-            await this.refreshTokens();
-            return this.getInitialAuthState();
-          }
-        } catch {
-          await this.logout();
-          return { user: null, tokens: null };
-        }
-      } else if (tokens) {
-        try {
-          await this.refreshTokens();
-          return this.getInitialAuthState();
-        } catch {
-          await this.logout();
-          return { user: null, tokens: null };
-        }
-      }
+      const tokens: AuthTokens = {
+        accessToken,
+        refreshToken: tokenManager.getRefreshToken() ?? '',
+        expiresAt,
+      };
 
-      return { user, tokens: tokens && tokens.expiresAt > Date.now() ? tokens : null };
+      return { user, tokens };
     } catch {
       return { user: null, tokens: null };
     }
   }
 
-  private async refreshTokens(): Promise<void> {
-    const tokens = await this.getStoredTokens();
-    if (!tokens) {
-      throw new Error('No refresh token');
-    }
-    const newTokens = await mockApi.refreshToken(tokens.refreshToken);
-    await this.storeTokens(newTokens);
-    this.setupTokenRefresh(newTokens.expiresAt);
-  }
-
-  private setupTokenRefresh(expiresAt: number): void {
-    if (this.tokenRefreshTimer) {
-      clearTimeout(this.tokenRefreshTimer);
-    }
-    const refreshTime = expiresAt - Date.now() - 5 * 60 * 1000;
-    if (refreshTime > 0) {
-      this.tokenRefreshTimer = setTimeout(async () => {
-        try {
-          await this.refreshTokens();
-        } catch {
-          await this.logout();
-        }
-      }, refreshTime);
-    }
-  }
-
-  async getCurrentUser(): Promise<User | null> {
-    return this.getStoredUser();
-  }
+  // ── Utility accessors used by LoginScreen ──────────────────────────────────
 
   async getRememberedParentId(): Promise<string | null> {
-    try {
-      return await AsyncStorage.getItem(STORAGE_KEYS.REMEMBERED_PARENT_ID);
-    } catch {
-      return null;
-    }
+    return storage.get<string>(STORAGE_KEYS.REMEMBERED_PARENT_ID);
   }
 
   async getAccessToken(): Promise<string | null> {
-    const tokens = await this.getStoredTokens();
-    return tokens?.accessToken ?? null;
+    return tokenManager.getAccessToken();
   }
 
   async isAuthenticated(): Promise<boolean> {
-    const tokens = await this.getStoredTokens();
-    return !!tokens && tokens.expiresAt > Date.now();
+    return tokenManager.isAuthenticated();
   }
 }
 

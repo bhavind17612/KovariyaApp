@@ -1,74 +1,83 @@
-import { Platform } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-// ─── Base URL ──────────────────────────────────────────────────────────────────
 /**
- * Returns the API base URL based on the running platform.
- * Android emulators map `localhost` → `10.0.2.2`; physical devices need your LAN IP.
- * We keep a single place to update the address.
+ * apiService.ts — Public API utilities used by onboarding screens.
+ *
+ * All exports are identical to the original file so that every existing screen
+ * (OnboardingScreen1–4, LoginScreen) continues to compile and run unchanged.
+ *
+ * Internal implementation now uses the centralised ENV config and STORAGE_KEYS
+ * instead of hardcoded strings and platform checks.
+ */
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ENV } from '../config/env';
+import { STORAGE_KEYS } from '../storage/storageKeys';
+
+// ─── Base URL ───────────────────────────────────────────────────────────────
+
+/**
+ * Returns the API base URL.
+ * Previously contained a Platform.OS branch — that logic now lives in ENV.
  */
 export function getApiBase(): string {
-  return Platform.OS === 'android' ? 'http://192.168.1.6:5000' : 'http://localhost:5000';
+  return ENV.API_BASE_URL;
 }
 
-// ─── Storage Keys ──────────────────────────────────────────────────────────────
-const ONBOARDING_ACCESS_TOKEN_KEY = '@kovariya_onboarding_access_token';
-const ONBOARDING_REFRESH_TOKEN_KEY = '@kovariya_onboarding_refresh_token';
+// ─── Onboarding Token Persistence ──────────────────────────────────────────
+// These tokens are temporary — received from verify-otp, discarded after PIN setup.
 
-// ─── Token Persistence ─────────────────────────────────────────────────────────
-
-/** Persists the tokens received from the verify-otp endpoint. */
-export async function storeOnboardingTokens(accessToken: string, refreshToken: string): Promise<void> {
+/** Persists the temporary onboarding tokens received after OTP verification. */
+export async function storeOnboardingTokens(
+  accessToken: string,
+  refreshToken: string,
+): Promise<void> {
   await Promise.all([
-    AsyncStorage.setItem(ONBOARDING_ACCESS_TOKEN_KEY, accessToken),
-    AsyncStorage.setItem(ONBOARDING_REFRESH_TOKEN_KEY, refreshToken),
+    AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING_ACCESS_TOKEN, accessToken),
+    AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING_REFRESH_TOKEN, refreshToken),
   ]);
 }
 
-/** Retrieves the stored onboarding access token (null if not found). */
+/** Returns the stored onboarding access token, or null if not found. */
 export async function getOnboardingAccessToken(): Promise<string | null> {
-  return AsyncStorage.getItem(ONBOARDING_ACCESS_TOKEN_KEY);
+  return AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING_ACCESS_TOKEN);
 }
 
-/** Retrieves the stored onboarding refresh token (null if not found). */
+/** Returns the stored onboarding refresh token, or null if not found. */
 export async function getOnboardingRefreshToken(): Promise<string | null> {
-  return AsyncStorage.getItem(ONBOARDING_REFRESH_TOKEN_KEY);
+  return AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING_REFRESH_TOKEN);
 }
 
-/** Clears the temporary onboarding tokens once the flow is complete. */
+/** Clears temporary onboarding tokens once the onboarding flow is complete. */
 export async function clearOnboardingTokens(): Promise<void> {
   await Promise.all([
-    AsyncStorage.removeItem(ONBOARDING_ACCESS_TOKEN_KEY),
-    AsyncStorage.removeItem(ONBOARDING_REFRESH_TOKEN_KEY),
+    AsyncStorage.removeItem(STORAGE_KEYS.ONBOARDING_ACCESS_TOKEN),
+    AsyncStorage.removeItem(STORAGE_KEYS.ONBOARDING_REFRESH_TOKEN),
   ]);
 }
 
-// ─── Auth Header Builder ───────────────────────────────────────────────────────
+// ─── Auth Header Builder ────────────────────────────────────────────────────
 
 /**
- * Returns an Authorization header object using the provided token.
- * Falls back to reading AsyncStorage if no token is passed.
- *
- * Usage:
- *   const headers = await buildAuthHeaders(accessToken);
+ * Builds Authorization + Content-Type headers.
+ * Falls back to the stored onboarding access token if none is provided.
  */
-export async function buildAuthHeaders(accessToken?: string | null): Promise<Record<string, string>> {
+export async function buildAuthHeaders(
+  accessToken?: string | null,
+): Promise<Record<string, string>> {
   const token = accessToken ?? (await getOnboardingAccessToken());
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'Accept': 'application/json',
+    Accept: 'application/json',
   };
   if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+    headers.Authorization = `Bearer ${token}`;
   }
   return headers;
 }
 
-// ─── Error Extractor ──────────────────────────────────────────────────────────
+// ─── Error Extractor ────────────────────────────────────────────────────────
 
 /**
  * Extracts a human-readable error message from a JSON API response body.
- * Handles multiple common payload shapes: { message }, { error }, { data.message }.
+ * Handles { message }, { error }, { data.message } payload shapes.
  */
 export function extractApiError(data: unknown, fallback: string): string {
   if (data && typeof data === 'object') {

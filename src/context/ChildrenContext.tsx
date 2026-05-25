@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { Child } from '../types';
-import { HOUSEHOLD_CHILDREN } from '../data/children';
+import { useAuth } from './AuthContext';
 
 type ChildrenContextValue = {
   children: Child[];
@@ -13,26 +13,35 @@ type ChildrenContextValue = {
 
 const ChildrenContext = createContext<ChildrenContextValue | undefined>(undefined);
 
-export function ChildrenProvider({ children }: { children: React.ReactNode }) {
-  const [selectedChildId, setSelectedChildId] = useState<string>(HOUSEHOLD_CHILDREN[0]?.id ?? '');
+export function ChildrenProvider({ children: reactChildren }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+
+  const childList = useMemo<Child[]>(() => user?.children ?? [], [user?.children]);
+
+  const [selectedChildId, setSelectedChildId] = useState<string>(childList[0]?.id ?? '');
   const [childPickerVisible, setChildPickerVisible] = useState(false);
+
+  // Reset to first child whenever the logged-in parent changes
+  useEffect(() => {
+    setSelectedChildId(childList[0]?.id ?? '');
+  }, [childList]);
 
   const openChildPicker = () => setChildPickerVisible(true);
   const closeChildPicker = () => setChildPickerVisible(false);
 
   const value = useMemo(
     () => ({
-      children: HOUSEHOLD_CHILDREN,
+      children: childList,
       selectedChildId,
       setSelectedChildId,
       childPickerVisible,
       openChildPicker,
       closeChildPicker,
     }),
-    [selectedChildId, childPickerVisible]
+    [childList, selectedChildId, childPickerVisible]
   );
 
-  return <ChildrenContext.Provider value={value}>{children}</ChildrenContext.Provider>;
+  return <ChildrenContext.Provider value={value}>{reactChildren}</ChildrenContext.Provider>;
 }
 
 export function useChildren(): ChildrenContextValue {
@@ -42,4 +51,3 @@ export function useChildren(): ChildrenContextValue {
   }
   return ctx;
 }
-

@@ -37,6 +37,7 @@ import { InputField } from '../components/InputField';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { LoginCredentials } from '../types/auth';
+import { getDisplayMessage } from '../utils/errorParser';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -226,10 +227,10 @@ export function LoginScreen({ navigation }: LoginProps) {
       await loginWithPin(enteredPin);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
-      console.log('err ', err)
+      if (__DEV__) console.warn('[LoginScreen] verifyPin error:', err);
       setPinError(true);
       setPin('');
-      const msg = err instanceof Error ? err.message : 'Could not verify PIN';
+      const msg = getDisplayMessage(err) || 'Could not verify PIN';
       showToast({ message: msg, type: 'error', durationMs: 4000 });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setTimeout(() => pinInputRef.current?.focus(), 300);

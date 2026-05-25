@@ -12,8 +12,6 @@ import { useAuth } from '../context/AuthContext';
 import { useChildren } from '../context/ChildrenContext';
 import { useConfirmDialog } from '../context/ConfirmDialogContext';
 
-const PARENT_GREETING_NAME = 'Sarah';
-
 const MENU_ITEMS = [
   {
     key: 'dashboard',
@@ -36,7 +34,10 @@ const MENU_ITEMS = [
 export function AppDrawerContent(props: DrawerContentComponentProps) {
   const { navigation } = props;
   const insets = useSafeAreaInsets();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
+  const parentName = user?.name ?? 'Parent';
+  const rawFirst = parentName.split(' ')[0] ?? parentName;
+  const displayName = rawFirst.length > 50 ? `${rawFirst.slice(0, 50)}…` : rawFirst;
   const { children, selectedChildId, openChildPicker } = useChildren();
   const { showConfirm } = useConfirmDialog();
   const selectedChild = useMemo(
@@ -97,10 +98,10 @@ export function AppDrawerContent(props: DrawerContentComponentProps) {
           <View style={styles.profileArea}>
             <View style={styles.profileTopRow}>
               <View style={styles.avatarBubble}>
-                <Text style={styles.avatarBubbleText}>{PARENT_GREETING_NAME.slice(0, 1)}</Text>
+                <Text style={styles.avatarBubbleText}>{parentName.slice(0, 1)}</Text>
               </View>
               <Text style={styles.welcomeParent} numberOfLines={2} ellipsizeMode="tail">
-                Welcome, {PARENT_GREETING_NAME}
+                Welcome, {displayName}
               </Text>
             </View>
             <Text style={styles.subline}>Select child profile for dashboard analytics and reports.</Text>

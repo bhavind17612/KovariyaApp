@@ -1,3 +1,5 @@
+import type { Child } from './index';
+
 export interface User {
   id: string; // The UUID of the user record
   parentId?: string; // The human-readable parent_id (e.g., PAR-1234-1)
@@ -9,6 +11,7 @@ export interface User {
   onboardingStage?: number;
   hasPin?: boolean;
   avatar?: string;
+  children?: Child[];
   createdAt: string;
   updatedAt: string;
 }
