@@ -22,6 +22,12 @@ export interface AuthState {
   isBootstrapping: boolean;
   /** True while a login/register request is in flight (inline button spinner only). */
   isSigningIn: boolean;
+  /**
+   * True from when logout is initiated until resetAuth() completes.
+   * AppNavigator renders a loading screen during this window so no authenticated
+   * screen can access null/undefined auth data.
+   */
+  isSigningOut: boolean;
   /** Last auth error message (cleared on next action). */
   error: string | null;
 }
@@ -33,6 +39,8 @@ export interface AuthActions {
   setError: (error: string | null) => void;
   /** Toggle the in-flight signing-in state. */
   setSigningIn: (value: boolean) => void;
+  /** Signal that logout has started — triggers loading gate in AppNavigator. */
+  setSigningOut: (value: boolean) => void;
   /** Called once bootstrap resolves — sets final state and clears isBootstrapping. */
   setBootstrapped: (user: User | null, tokens: AuthTokens | null) => void;
   /** Full reset — called on logout or token refresh failure. */
@@ -45,6 +53,7 @@ const initialState: AuthState = {
   isAuthenticated: false,
   isBootstrapping: true,
   isSigningIn: false,
+  isSigningOut: false,
   error: null,
 };
 
@@ -57,6 +66,7 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
       tokens,
       isAuthenticated: true,
       isSigningIn: false,
+      isSigningOut: false,
       error: null,
     }),
 
@@ -66,12 +76,16 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
   setSigningIn: (value) =>
     set({ isSigningIn: value, error: null }),
 
+  setSigningOut: (value) =>
+    set({ isSigningOut: value }),
+
   setBootstrapped: (user, tokens) =>
     set({
       user,
       tokens,
       isAuthenticated: !!(user && tokens),
       isBootstrapping: false,
+      isSigningOut: false,
     }),
 
   resetAuth: () =>
@@ -81,6 +95,7 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
       isAuthenticated: false,
       isBootstrapping: false,
       isSigningIn: false,
+      isSigningOut: false,
       error: null,
     }),
 }));
@@ -93,4 +108,5 @@ export const selectUser = (s: AuthState & AuthActions) => s.user;
 export const selectIsAuthenticated = (s: AuthState & AuthActions) => s.isAuthenticated;
 export const selectIsBootstrapping = (s: AuthState & AuthActions) => s.isBootstrapping;
 export const selectIsSigningIn = (s: AuthState & AuthActions) => s.isSigningIn;
+export const selectIsSigningOut = (s: AuthState & AuthActions) => s.isSigningOut;
 export const selectAuthError = (s: AuthState & AuthActions) => s.error;

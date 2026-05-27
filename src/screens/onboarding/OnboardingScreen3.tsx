@@ -30,7 +30,8 @@ import { InputField } from '../../components/InputField';
 import { DatePickerField } from '../../components/DatePickerField';
 import { formatAppDate } from '../../utils/dateFormat';
 import { ageFromIsoDate, toIsoDate } from '../../utils/age';
-import { buildAuthHeaders, extractApiError, getApiBase } from '../../services/apiService';
+import { api, ENDPOINTS } from '../../api';
+import { parseApiError, isOnboardingExpiredError } from '../../utils/errorParser';
 import { useToast } from '../../context/ToastContext';
 
 const { width: SW, height: SH } = Dimensions.get('window');
@@ -128,6 +129,7 @@ const SchoolSheet = ({
 	onClose,
 	schools,
 	onAddSchool,
+	loading = false,
 	title = 'School',
 }: {
 	visible: boolean;
@@ -136,6 +138,7 @@ const SchoolSheet = ({
 	onClose: () => void;
 	schools: string[];
 	onAddSchool: (s: string) => void;
+	loading?: boolean;
 	title?: string;
 }) => {
 	const sheetY = useSharedValue(SH);
@@ -176,39 +179,43 @@ const SchoolSheet = ({
 						/>
 					</View>
 
-					<ScrollView showsVerticalScrollIndicator={false} style={styles.maxHeightSheet} keyboardShouldPersistTaps="handled">
-						{showAdd && (
-							<Pressable
-								style={styles.gradeItem}
-								onPress={() => {
-									onAddSchool(searchQuery.trim());
-									onSelect(searchQuery.trim());
-									Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-									onClose();
-								}}
-							>
-								<Icon name="add-circle-outline" size={20} color={colors.primary} />
-								<Text style={[styles.gradeText, { color: colors.primary, marginLeft: spacing.sm, fontWeight: '600' }]}>
-									Add "{searchQuery.trim()}"
-								</Text>
-							</Pressable>
-						)}
-						{filtered.map((s, i) => {
-							const isSelected = selected === s;
-							return (
-								<React.Fragment key={s}>
-									<Pressable
-										style={[styles.gradeItem, isSelected ? styles.gradeItemActive : null]}
-										onPress={() => { onSelect(s); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onClose(); }}
-									>
-										<Text style={[styles.gradeText, isSelected ? styles.gradeTextActive : null]}>{s}</Text>
-										{isSelected ? <Icon name="check" size={18} color={colors.primary} /> : null}
-									</Pressable>
-									{(i < filtered.length - 1 || showAdd) ? <View style={styles.gradeDivider} /> : null}
-								</React.Fragment>
-							);
-						})}
-					</ScrollView>
+					{loading ? (
+						<ActivityIndicator size="large" color={colors.primary} style={{ marginVertical: spacing.xxl }} />
+					) : (
+						<ScrollView showsVerticalScrollIndicator={false} style={styles.maxHeightSheet} keyboardShouldPersistTaps="handled">
+							{showAdd && (
+								<Pressable
+									style={styles.gradeItem}
+									onPress={() => {
+										onAddSchool(searchQuery.trim());
+										onSelect(searchQuery.trim());
+										Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+										onClose();
+									}}
+								>
+									<Icon name="add-circle-outline" size={20} color={colors.primary} />
+									<Text style={[styles.gradeText, { color: colors.primary, marginLeft: spacing.sm, fontWeight: '600' }]}>
+										Add "{searchQuery.trim()}"
+									</Text>
+								</Pressable>
+							)}
+							{filtered.map((s, i) => {
+								const isSelected = selected === s;
+								return (
+									<React.Fragment key={s}>
+										<Pressable
+											style={[styles.gradeItem, isSelected ? styles.gradeItemActive : null]}
+											onPress={() => { onSelect(s); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onClose(); }}
+										>
+											<Text style={[styles.gradeText, isSelected ? styles.gradeTextActive : null]}>{s}</Text>
+											{isSelected ? <Icon name="check" size={18} color={colors.primary} /> : null}
+										</Pressable>
+										{(i < filtered.length - 1 || showAdd) ? <View style={styles.gradeDivider} /> : null}
+									</React.Fragment>
+								);
+							})}
+						</ScrollView>
+					)}
 				</Animated.View>
 			</KeyboardAvoidingView>
 		</Modal>
@@ -239,14 +246,40 @@ export function OnboardingScreen3({ navigation, route }: Props) {
 	const [showGradeSheet, setShowGradeSheet] = useState(false);
 	const [school, setSchool] = useState('');
 	const [showSchoolSheet, setShowSchoolSheet] = useState(false);
-	const [schools, setSchools] = useState<string[]>(isSchool
-		? ['Delhi Public School', 'Kendriya Vidyalaya', 'National Public School', 'Springdales School']
-		: ['Byju\'s Classes', 'Allen Career Institute', 'Kumon', 'Vedantu Academy']
-	);
+	const [schools, setSchools] = useState<string[]>([]);
+	const [schoolsLoading, setSchoolsLoading] = useState(false);
 	const [gender, setGender] = useState<string | null>(null);
 	const [classSec, setClassSec] = useState('');
 	const [batchDetails, setBatchDetails] = useState('');
 	const [isLoading, setIsLoading] = useState(false);
+
+	useEffect(() => {
+		let cancelled = false;
+		const fetchSchools = async () => {
+			setSchoolsLoading(true);
+			try {
+				const response = await api.get<Array<{ id: string; name: string }>>(ENDPOINTS.SCHOOLS.LIST,{skipAuth: false});
+				if (!cancelled) {
+					const names = (response.data.data ?? []).map((s) => s.name).filter(Boolean);
+					setSchools(names);
+				}
+			} catch (err) {
+				if (!cancelled) {
+					const responseData = (err as any)?.response?.data;
+					if (isOnboardingExpiredError(responseData)) {
+						showToast({ message: 'Your session has expired. Please start onboarding again.', type: 'error' });
+						navigation.reset({ index: 1, routes: [{ name: 'LoginScreen' }, { name: 'Onboarding1' }] });
+						return;
+					}
+					showToast({ message: parseApiError(err).message, type: 'error' });
+				}
+			} finally {
+				if (!cancelled) setSchoolsLoading(false);
+			}
+		};
+		fetchSchools();
+		return () => { cancelled = true; };
+	}, []);
 
 	const ageYears = ageFromIsoDate(dobIso);
 	const formattedDob = formatAppDate(dobIso);
@@ -269,8 +302,6 @@ export function OnboardingScreen3({ navigation, route }: Props) {
 		setIsLoading(true);
 
 		try {
-			const apiBase = getApiBase();
-			const authHeaders = await buildAuthHeaders(accessToken);
 			console.log('parentData', parentData)
 			// Build payload — school_id / institution_id are human-readable strings
 			const payload: Record<string, any> = {
@@ -289,19 +320,12 @@ export function OnboardingScreen3({ navigation, route }: Props) {
 				payload.batch = batchDetails.trim() || undefined;
 			}
 			console.log('payload', payload);
-			const res = await fetch(`${apiBase}/api/v1/students/onboarding`, {
-				method: 'POST',
-				headers: authHeaders,
-				body: JSON.stringify(payload),
-			});
+			const response = await api.post<{ message?: string }>(
+				ENDPOINTS.STUDENTS.ONBOARDING,
+				payload,
+			);
 
-			const responseData = await res.json().catch(() => ({}));
-
-			if (!res.ok) {
-				throw new Error(extractApiError(responseData, 'Failed to add child. Please try again.'));
-			}
-
-			const successMsg = responseData.data?.message || responseData.message || 'Child added successfully!';
+			const successMsg = response.data.data?.message || response.data.message || 'Child added successfully!';
 			showToast({ message: successMsg, type: 'success' });
 
 			screenX.value = withTiming(-SW * 0.15, { duration: 250, easing: Easing.out(Easing.cubic) }, () => {
@@ -309,7 +333,12 @@ export function OnboardingScreen3({ navigation, route }: Props) {
 			});
 			navigation.navigate('Onboarding4', { accessToken, parentData });
 		} catch (err: any) {
-			showToast({ message: err.message || 'Failed to add child. Please try again.', type: 'error' });
+			if (isOnboardingExpiredError((err as any)?.response?.data)) {
+				showToast({ message: 'Your session has expired. Please start onboarding again.', type: 'error' });
+				navigation.reset({ index: 1, routes: [{ name: 'LoginScreen' }, { name: 'Onboarding1' }] });
+				return;
+			}
+			showToast({ message: parseApiError(err).message || 'Failed to add child. Please try again.', type: 'error' });
 		} finally {
 			setIsLoading(false);
 		}
@@ -513,6 +542,7 @@ export function OnboardingScreen3({ navigation, route }: Props) {
 				onClose={() => setShowSchoolSheet(false)}
 				schools={schools}
 				onAddSchool={(s) => setSchools(prev => [s, ...prev])}
+				loading={schoolsLoading}
 				title={isSchool ? 'School' : 'Institute'}
 			/>
 		</SafeAreaView>

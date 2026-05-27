@@ -49,10 +49,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     isAuthenticated,
     isBootstrapping,
     isSigningIn,
+    isSigningOut,
     error,
     setAuthenticated,
     setError,
     setSigningIn,
+    setSigningOut,
     setBootstrapped,
     resetAuth,
   } = useAuthStore();
@@ -163,14 +165,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   );
 
   const logout = useCallback(async (): Promise<void> => {
+    // Signal sign-out immediately so AppNavigator replaces the authenticated
+    // stack with a loading screen — no authenticated screen renders with
+    // null/undefined data during teardown.
+    setSigningOut(true);
     try {
       await authService.logout();
     } catch {
       // Always reset — even if the server call fails
     } finally {
-      resetAuth();
+      resetAuth(); // clears isSigningOut, user, tokens, isAuthenticated
     }
-  }, [resetAuth]);
+  }, [resetAuth, setSigningOut]);
 
   const refreshAuth = useCallback(async (): Promise<void> => {
     try {
@@ -191,6 +197,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       isAuthenticated,
       isBootstrapping,
       isSigningIn,
+      isSigningOut,
       error,
       login,
       loginByEmail,
@@ -204,7 +211,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // State from Zustand: reference changes only when the value changes.
     // Actions: stable useCallback refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, tokens, isAuthenticated, isBootstrapping, isSigningIn, error],
+    [user, tokens, isAuthenticated, isBootstrapping, isSigningIn, isSigningOut, error],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

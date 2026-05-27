@@ -30,6 +30,12 @@ export interface AuthState {
   isBootstrapping: boolean;
   /** True while login/register request is in flight (use inline button loading only). */
   isSigningIn: boolean;
+  /**
+   * True from the moment logout is initiated until resetAuth() completes.
+   * AppNavigator shows a loading screen during this window so no authenticated
+   * screen can render with null/undefined auth data.
+   */
+  isSigningOut: boolean;
   error: string | null;
 }
 

@@ -33,7 +33,9 @@ import * as Haptics from 'expo-haptics';
 import { colors, spacing, borderRadius, shadows, textStyles } from '../../theme';
 import { InputField } from '../../components/InputField';
 import { useToast } from '../../context/ToastContext';
-import { getApiBase, storeOnboardingTokens, extractApiError } from '../../services/apiService';
+import { storeOnboardingTokens } from '../../services/apiService';
+import { api, ENDPOINTS, tokenManager } from '../../api';
+import { parseApiError } from '../../utils/errorParser';
 
 
 const { width: SW } = Dimensions.get('window');
@@ -166,42 +168,15 @@ export function OnboardingScreen1({ navigation }: Props) {
     setSendingOtp(true);
 
     try {
-      const apiBase = getApiBase();
       // const fullMobileNumber = `${countryCode.code}${trimmedMobile}`;
       const fullMobileNumber = `${trimmedMobile}`;
-
-      const res = await fetch(`${apiBase}/api/v1/parents/onboarding/send-otp`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({
-          school_id: schoolId.trim().toUpperCase(),
-          mobile_number: fullMobileNumber,
-        }),
-      });
-
-      const responseData = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        let errMsg = 'Something went wrong. Please try again.';
-        if (responseData && typeof responseData === 'object') {
-          if (typeof responseData.message === 'string' && responseData.message.trim()) {
-            errMsg = responseData.message;
-          } else if (typeof responseData.error === 'string' && responseData.error.trim()) {
-            errMsg = responseData.error;
-          } else if (responseData.data && typeof responseData.data.message === 'string') {
-            errMsg = responseData.data.message;
-          }
-        }
-        throw new Error(errMsg);
-      }
-
-      // Successful OTP send
-      const successMessage = responseData.data?.message || `OTP sent successfully to ${fullMobileNumber}`;
+      const response = await api.post<{ message?: string }>(
+        ENDPOINTS.ONBOARDING.SEND_OTP,
+        { school_id: schoolId.trim().toUpperCase(), mobile_number: fullMobileNumber },
+        { skipAuth: true },
+      );
+      const successMessage = response.data.data?.message || response.data.message || `OTP sent successfully to ${fullMobileNumber}`;
       showToast({ message: successMessage, type: 'success' });
-
       if (isResend) {
         setTimer(60);
         setTimerActive(true);
@@ -211,7 +186,7 @@ export function OnboardingScreen1({ navigation }: Props) {
         transitionToOtp();
       }
     } catch (err: any) {
-      showToast({ message: err.message || 'Failed to send OTP. Please try again.', type: 'error' });
+      showToast({ message: parseApiError(err).message, type: 'error' });
     } finally {
       setSendingOtp(false);
     }
@@ -299,48 +274,41 @@ export function OnboardingScreen1({ navigation }: Props) {
     setVerifyingOtp(true);
 
     try {
-      const apiBase = getApiBase();
       const trimmedMobile = mobile.trim();
-
-      const res = await fetch(`${apiBase}/api/v1/parents/onboarding/verify-otp`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({
+      const response = await api.post<{
+        accessToken?: string;
+        access_token?: string;
+        refreshToken?: string;
+        refresh_token?: string;
+        parent?: any;
+        message?: string;
+      }>(
+        ENDPOINTS.ONBOARDING.VERIFY_OTP,
+        {
           school_id: schoolId.trim().toUpperCase(),
           mobile_number: trimmedMobile,
           otp_code: otpToVerify,
-        }),
-      });
+        },
+        { skipAuth: true },
+      );
 
-      const responseData = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(extractApiError(responseData, 'OTP verification failed. Please try again.'));
-      }
-
-      // Successful OTP Verification — extract and persist tokens
-      const data = responseData.data ?? responseData;
+      const data = response.data.data;
       const newAccessToken: string | undefined = data?.accessToken || data?.access_token;
       const newRefreshToken: string | undefined = data?.refreshToken || data?.refresh_token;
 
       let resolvedToken: string | null = accessToken;
       if (newAccessToken && newRefreshToken) {
         await storeOnboardingTokens(newAccessToken, newRefreshToken);
+        tokenManager.setOnboardingToken(newAccessToken);
         setAccessToken(newAccessToken);
         resolvedToken = newAccessToken;
       }
 
-      const successMessage = data?.message || 'OTP verified successfully!';
+      const successMessage = data?.message || response.data.message || 'OTP verified successfully!';
       showToast({ message: successMessage, type: 'success' });
-
-      // Pass the parent object AND the resolved token so proceedToNext
-      // can determine which onboarding screen to resume from.
       proceedToNext(data?.parent, resolvedToken);
     } catch (err: any) {
-      showToast({ message: err.message || 'OTP verification failed. Please try again.', type: 'error' });
+      showToast({ message: parseApiError(err).message || 'OTP verification failed. Please try again.', type: 'error' });
     } finally {
       setVerifyingOtp(false);
     }

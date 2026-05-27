@@ -12,9 +12,13 @@ import {OnboardingNavigator} from './OnboardingNavigator';
 const Stack=createStackNavigator();
 
 const AppNavigatorContent=() => {
-	const {isAuthenticated,isBootstrapping}=useAuth();
+	const {isAuthenticated,isBootstrapping,isSigningOut}=useAuth();
 
-	if(isBootstrapping) {
+	// Show a full-screen loader during cold-start restore AND during logout.
+	// The logout gate is critical: it ensures no authenticated screen (Dashboard,
+	// Drawer, etc.) re-renders with null/undefined user data between the moment
+	// resetAuth() fires and the moment React Navigation unmounts those screens.
+	if(isBootstrapping || isSigningOut) {
 		return (
 			<View style={{
 				flex: 1,

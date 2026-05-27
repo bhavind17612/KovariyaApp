@@ -118,3 +118,18 @@ export function getDisplayMessage(error: unknown): string {
 export function extractApiError(data: unknown, fallback: string): string {
   return extractMessageFromData(data) ?? fallback;
 }
+
+/**
+ * Returns true when the API body signals that the onboarding access token has
+ * expired: `{ "code": "UNAUTHORIZED", "message": "Access token expired" }`.
+ * Works for both raw-fetch response bodies and Axios `error.response.data`.
+ */
+export function isOnboardingExpiredError(data: unknown): boolean {
+  if (!data || typeof data !== 'object') return false;
+  const d = data as Record<string, unknown>;
+  return (
+    d.code === 'UNAUTHORIZED' &&
+    typeof d.message === 'string' &&
+    d.message.toLowerCase().includes('access token expired')
+  );
+}

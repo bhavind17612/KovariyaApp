@@ -41,7 +41,7 @@ export function AppDrawerContent(props: DrawerContentComponentProps) {
   const { children, selectedChildId, openChildPicker } = useChildren();
   const { showConfirm } = useConfirmDialog();
   const selectedChild = useMemo(
-    () => children.find((c) => c.id === selectedChildId) ?? children[0],
+    () => children.find((c) => c.id === selectedChildId) ?? children[0] ?? null,
     [children, selectedChildId]
   );
 
@@ -107,29 +107,31 @@ export function AppDrawerContent(props: DrawerContentComponentProps) {
             <Text style={styles.subline}>Select child profile for dashboard analytics and reports.</Text>
           </View>
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.childSelectorRow,
-              pressed && styles.childSelectorRowPressed,
-            ]}
-            onPress={() => {
-              navigation.closeDrawer();
-              openChildPicker();
-            }}
-            accessibilityRole="button"
-            accessibilityLabel={`Change child. Now showing ${selectedChild.name}`}
-          >
-            <Icon name="child-care" size={18} color="rgba(255,255,255,0.9)" />
-            <View style={styles.childSelectorMain}>
-              <Text style={styles.childSelectorName} numberOfLines={1}>
-                {selectedChild.name}
-              </Text>
-              <Text style={styles.childSelectorAge} numberOfLines={1}>
-                Age {selectedChild.age} years
-              </Text>
-            </View>
-            <Icon name="expand-more" size={20} color="rgba(255,255,255,0.75)" />
-          </Pressable>
+          {selectedChild ? (
+            <Pressable
+              style={({ pressed }) => [
+                styles.childSelectorRow,
+                pressed && styles.childSelectorRowPressed,
+              ]}
+              onPress={() => {
+                navigation.closeDrawer();
+                openChildPicker();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`Change child. Now showing ${selectedChild.name}`}
+            >
+              <Icon name="child-care" size={18} color="rgba(255,255,255,0.9)" />
+              <View style={styles.childSelectorMain}>
+                <Text style={styles.childSelectorName} numberOfLines={1}>
+                  {selectedChild.name}
+                </Text>
+                <Text style={styles.childSelectorAge} numberOfLines={1}>
+                  Age {selectedChild.age} years
+                </Text>
+              </View>
+              <Icon name="expand-more" size={20} color="rgba(255,255,255,0.75)" />
+            </Pressable>
+          ) : null}
 
           <View style={styles.divider} />
 

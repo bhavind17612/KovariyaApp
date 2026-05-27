@@ -25,8 +25,10 @@ export function setupInterceptors(client: AxiosInstance): void {
   // ── REQUEST: inject Bearer token ─────────────────────────────────────────
   client.interceptors.request.use(
     (config: InternalAxiosRequestConfig) => {
+      console.log("config.skipAjth", config.skipAuth)
       if (!config.skipAuth) {
         const token = tokenManager.getAccessToken();
+        console.log("token", token)
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
         }
@@ -35,7 +37,7 @@ export function setupInterceptors(client: AxiosInstance): void {
       if (ENV.isDev) {
         console.log(`[API →] ${config.method?.toUpperCase()} ${config.url}`);
       }
-
+      console.log('config.headers ',config.headers)
       return config;
     },
     (error) => Promise.reject(error),

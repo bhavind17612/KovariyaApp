@@ -23,6 +23,11 @@ export const ENDPOINTS = {
   PARENT: {
     PROFILE: '/api/v1/parents/profile',
     UPDATE_PROFILE: '/api/v1/parents/profile',
+    BY_UUID: (uuid: string) => `/api/v1/parents/${uuid}`,
+  },
+
+  STUDENTS: {
+    ONBOARDING: '/api/v1/students/onboarding',
   },
 
   MISSIONS: {
@@ -46,5 +51,9 @@ export const ENDPOINTS = {
     LIST: '/api/v1/notifications',
     MARK_READ: (id: string) => `/api/v1/notifications/${id}/read`,
     SETTINGS: '/api/v1/notifications/settings',
+  },
+
+  SCHOOLS: {
+    LIST: '/api/v1/schools',
   },
 } as const;

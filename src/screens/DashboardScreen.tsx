@@ -223,25 +223,25 @@ const DashboardScreen: React.FC = () => {
   ]);
 
   const todayMission = useMemo(
-    () => MOCK_TODAY_MISSION_BY_CHILD[selectedChild.id] ?? MOCK_TODAY_MISSION_BY_CHILD['1'],
-    [selectedChild.id]
+    () => MOCK_TODAY_MISSION_BY_CHILD[selectedChild?.id ?? ''] ?? MOCK_TODAY_MISSION_BY_CHILD['1'],
+    [selectedChild?.id]
   );
 
   const weeklyAspectProgressSeries = useMemo(
-    () => getWeeklyAspectProgressSeries(selectedChild.id),
-    [selectedChild.id]
+    () => getWeeklyAspectProgressSeries(selectedChild?.id ?? ''),
+    [selectedChild?.id]
   );
 
   const aiInsightsPayload = useMemo(
-    () => getAIInsightsForChild(selectedChild.id),
-    [selectedChild.id]
+    () => getAIInsightsForChild(selectedChild?.id ?? ''),
+    [selectedChild?.id]
   );
 
-  const todayMissionStatus: TodayMissionStatus = todayMissionByChildId[selectedChild.id] ?? 'pending';
+  const todayMissionStatus: TodayMissionStatus = todayMissionByChildId[selectedChild?.id ?? ''] ?? 'pending';
 
   const setTodayMissionForSelectedChild = useCallback((status: TodayMissionStatus) => {
-    setTodayMissionByChildId((prev) => ({ ...prev, [selectedChild.id]: status }));
-  }, [selectedChild.id]);
+    setTodayMissionByChildId((prev) => ({ ...prev, [selectedChild?.id ?? '']: status }));
+  }, [selectedChild?.id]);
 
   const openAspectRating = useCallback((aspect: RatingAspectDefinition) => {
     setPendingAspect(aspect);
@@ -265,10 +265,10 @@ const DashboardScreen: React.FC = () => {
         DASHBOARD_RATING_ASPECTS.find((a) => a.id === payload.aspectId)?.name ?? 'Aspect';
       showToast({
         type: 'success',
-        message: `Saved · today's behaviour log for ${selectedChild.name}. You can add another log with Save entry.`,
+        message: `Saved · today's behaviour log for ${selectedChild?.name ?? ''}. You can add another log with Save entry.`,
       });
     },
-    [selectedChild.name, showToast]
+    [selectedChild?.name, showToast]
   );
 
   const handleAspectRatingSaveAndNext = useCallback(
@@ -277,7 +277,7 @@ const DashboardScreen: React.FC = () => {
         DASHBOARD_RATING_ASPECTS.find((a) => a.id === payload.aspectId)?.name ?? 'Aspect';
       showToast({
         type: 'success',
-        message: `Saved · ${label} for ${selectedChild.name}`,
+        message: `Saved · ${label} for ${selectedChild?.name ?? ''}`,
       });
       const idx = DASHBOARD_RATING_ASPECTS.findIndex((a) => a.id === payload.aspectId);
       const next =
@@ -289,7 +289,7 @@ const DashboardScreen: React.FC = () => {
         setRatingSheetAspect(next);
       }
     },
-    [selectedChild.name, showToast]
+    [selectedChild?.name, showToast]
   );
 
   const handleVoiceNotePlaceholder = useCallback(() => {
@@ -306,13 +306,13 @@ const DashboardScreen: React.FC = () => {
 
   // Confidence Factor (CF) is provided as percent (0-100) on this screen.
   // Your scoring system: CF = max(0.4, min(1, N/3)).
-  const confidencePercent = clamp(selectedChild.confidenceIndicator ?? 0, 0, 100);
+  const confidencePercent = clamp(selectedChild?.confidenceIndicator ?? 0, 0, 100);
   const confidenceCF = confidencePercent / 100;
 
   const sdsSnapshot = useMemo(() => {
-    const row = MOCK_SDS_BY_CHILD[selectedChild.id];
+    const row = MOCK_SDS_BY_CHILD[selectedChild?.id ?? ''];
     return row ?? { percent: 72, trend: 0 };
-  }, [selectedChild.id]);
+  }, [selectedChild?.id]);
 
   const sdsMood = useMemo(() => getSdsCardMood(sdsSnapshot.trend), [sdsSnapshot.trend]);
 
@@ -342,6 +342,8 @@ const DashboardScreen: React.FC = () => {
       };
     }, [])
   );
+
+  if (!selectedChild) return null;
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>

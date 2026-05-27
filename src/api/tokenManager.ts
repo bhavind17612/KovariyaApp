@@ -94,6 +94,22 @@ class TokenManager {
 
   // ── Write operations ───────────────────────────────────────────────────────
 
+  /**
+   * Loads an onboarding access token into memory so the Axios interceptor
+   * injects it automatically into subsequent requests.
+   *
+   * Intentionally does NOT write to persistent storage — the onboarding token
+   * is ephemeral and must not be mistaken for a real auth session on app
+   * restart. `completeOnboardingAuthentication` will overwrite this with the
+   * real tokens once onboarding is complete.
+   *
+   * `isAuthenticated()` still returns false (expiresAt stays 0), so the
+   * AuthContext never treats an in-progress onboarding as "logged in".
+   */
+  setOnboardingToken(accessToken: string): void {
+    this._accessToken = accessToken;
+  }
+
   async setTokens(tokens: AuthTokens): Promise<void> {
     this._accessToken = tokens.accessToken;
     this._refreshToken = tokens.refreshToken;

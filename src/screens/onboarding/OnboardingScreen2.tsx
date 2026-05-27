@@ -25,7 +25,8 @@ import * as Haptics from 'expo-haptics';
 import { colors, spacing, borderRadius, shadows, textStyles } from '../../theme';
 import { InputField } from '../../components/InputField';
 import { useToast } from '../../context/ToastContext';
-import { getApiBase, buildAuthHeaders, extractApiError } from '../../services/apiService';
+import { api, ENDPOINTS } from '../../api';
+import { isOnboardingExpiredError, parseApiError } from '../../utils/errorParser';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -98,29 +99,18 @@ export function OnboardingScreen2({ navigation, route }: Props) {
 		setIsLoading(true);
 
 		try {
-			const apiBase = getApiBase();
-			const authHeaders = await buildAuthHeaders(accessToken);
-
-			const res = await fetch(`${apiBase}/api/v1/parents/${parentData.uuid}`, {
-				method: 'PATCH',
-				headers: authHeaders,
-				body: JSON.stringify({
+			const response = await api.patch<{ message?: string }>(
+				ENDPOINTS.PARENT.BY_UUID(parentData.uuid),
+				{
 					parent_name: fullName.trim(),
 					guardian_type: selectedRole,
 					email: email.trim().toLowerCase(),
 					school_id: schoolId,
 					mobile_number: mobile,
-				}),
-			});
+				},
+			);
 
-			const responseData = await res.json().catch(() => ({}));
-
-			if (!res.ok) {
-				throw new Error(extractApiError(responseData, 'Failed to add parent details. Please try again.'));
-			}
-
-			// Successful Parent Creation
-			const successMsg = responseData.message || responseData.data?.message || 'Profile saved successfully!';
+			const successMsg = response.data.message || response.data.data?.message || 'Profile saved successfully!';
 			showToast({ message: successMsg, type: 'success' });
 
 			screenX.value = withTiming(-SW * 0.15, { duration: 250, easing: Easing.out(Easing.cubic) }, () => {
@@ -131,10 +121,15 @@ export function OnboardingScreen2({ navigation, route }: Props) {
 				schoolId,
 				mobile,
 				accessToken,
-				parentData,   // needed by Screen3 to supply parent_uuid to the students API
+				parentData,
 			});
 		} catch (err: any) {
-			showToast({ message: err.message || 'Failed to save profile. Please try again.', type: 'error' });
+			if (isOnboardingExpiredError((err as any)?.response?.data)) {
+				showToast({ message: 'Your session has expired. Please start onboarding again.', type: 'error' });
+				navigation.reset({ index: 1, routes: [{ name: 'LoginScreen' }, { name: 'Onboarding1' }] });
+				return;
+			}
+			showToast({ message: parseApiError(err).message || 'Failed to save profile. Please try again.', type: 'error' });
 		} finally {
 			setIsLoading(false);
 		}

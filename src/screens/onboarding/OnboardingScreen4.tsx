@@ -33,7 +33,7 @@ import {
 	getOnboardingAccessToken,
 	getOnboardingRefreshToken,
 } from '../../services/apiService';
-import { getDisplayMessage } from '../../utils/errorParser';
+import { getDisplayMessage, isOnboardingExpiredError } from '../../utils/errorParser';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -244,6 +244,11 @@ export function OnboardingScreen4({ navigation, route }: Props) {
 
 			showToast({ message: onboardingSuccessMsg || 'PIN set! Welcome to Kovariya', type: 'success' });
 		} catch (err: any) {
+			if (isOnboardingExpiredError(err?.response?.data)) {
+				showToast({ message: 'Your session has expired. Please start onboarding again.', type: 'error' });
+				navigation.reset({ index: 1, routes: [{ name: 'LoginScreen' }, { name: 'Onboarding1' }] });
+				return;
+			}
 			const msg = getDisplayMessage(err) || err?.message || 'Something went wrong. Please try again.';
 			showToast({ message: msg, type: 'error' });
 		} finally {
