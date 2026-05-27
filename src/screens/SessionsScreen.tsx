@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   BackHandler,
   Image,
   Platform,
@@ -29,7 +30,9 @@ import Animated, {
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
+import { apiClient } from '../api/client';
 import { AppGradientHeader, Card } from '../components';
+import { useToast } from '../context/ToastContext';
 import {
   borderRadius,
   colors,
@@ -39,6 +42,7 @@ import {
   typography,
 } from '../theme';
 import { floatingPillShadow } from '../theme/missionPillStyles';
+import { getDisplayMessage } from '../utils/errorParser';
 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -114,74 +118,115 @@ function sessionStatusPalette(group: SessionGroup): StatusPalette {
 
 const SESSION_GROUPS: SessionGroup[] = ['Upcoming', 'Conducted', 'Watch Session'];
 
-const SESSIONS: SessionItem[] = [
-  {
-    id: 'session-routines',
-    group: 'Upcoming',
-    title: 'Building Calm Morning Routines',
-    shortDescription:
-      'A practical parent session on reducing rushed mornings and helping children start settled.',
-    description:
-      'This session walks parents through a calm, repeatable morning structure that lowers stress, supports independence, and helps children arrive at school more ready to learn.',
-    date: '12 Apr 2026 · 10:00 AM',
-    duration: '35 min',
-    imageUri: 'https://images.unsplash.com/photo-1588075592446-265fd1e6e76f?w=600&q=80',
-    bullets: [
-      'Creating a visual morning flow children can actually follow',
-      'Reducing last-minute conflict around dressing, breakfast, and bags',
-      'Using gentle prompts instead of repeated reminders',
-      'Planning transitions so school drop-offs feel calmer',
-    ],
-    whyItMatters:
-      'Predictable mornings shape the tone of the entire day. When children begin with less friction, they often show better focus, confidence, and emotional regulation.',
-    tipsForParents:
-      'Start with one anchor habit this week, like packing the school bag the previous evening. Small consistency beats a perfect plan that is hard to sustain.',
-  },
-  {
-    id: 'session-behaviour',
-    group: 'Conducted',
-    title: 'Positive Behaviour Without Power Struggles',
-    shortDescription:
-      'A completed workshop on setting boundaries with warmth, consistency, and less escalation.',
-    description:
-      'We explored simple tools for responding to challenging behaviour in a way that protects connection while still keeping boundaries clear and dependable.',
-    date: '05 Apr 2026 · 4:30 PM',
-    duration: '42 min',
-    imageUri: 'https://images.unsplash.com/photo-1536640712-4d4c36ff0e4e?w=600&q=80',
-    bullets: [
-      'Recognising what children communicate through behaviour',
-      'Setting limits with calm, short language',
-      'Repairing connection after a hard moment',
-      'Building routines that prevent recurring triggers',
-    ],
-    whyItMatters:
-      'Children respond better when adults are predictable. Supportive boundaries can lower repeated conflict and help children feel both safe and understood.',
-    tipsForParents:
-      'Choose one phrase you will repeat calmly when behaviour spikes. Consistent language helps children know what comes next and reduces emotional overload.',
-  },
-  {
-    id: 'session-study',
-    group: 'Watch Session',
-    title: 'Helping Children Stay Steady During Study Time',
-    shortDescription:
-      'A replay-ready session for parents supporting homework routines, focus blocks, and healthy breaks.',
-    description:
-      'This on-demand session shares ways to create a supportive study environment at home so children can work with more focus, clearer expectations, and less resistance.',
-    date: '28 Mar 2026',
-    duration: '31 min',
-    imageUri: 'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=600&q=80',
-    bullets: [
-      'Setting up short, realistic study blocks',
-      'Helping children reset between homework tasks',
-      'Balancing encouragement with independence',
-      'Spotting when tiredness is the real blocker',
-    ],
-    whyItMatters:
-      'Study routines are not only about grades. They also build stamina, self-trust, and a calmer relationship with learning at home.',
-    tipsForParents:
-      'Keep the after-school transition gentle. A snack, movement break, and a clear start time often work better than jumping straight into homework.',
-  },
-];
+type ApiSession = {
+  id?: number | string;
+  uuid?: string;
+  session_code?: string;
+  session_name?: string;
+  short_description?: string | null;
+  description?: string | null;
+  banner_image_url?: string | null;
+  video_url?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  status?: string | null;
+};
+
+type SessionsApiResponse =
+  | ApiSession[]
+  | {
+      success?: boolean;
+      data?: ApiSession[] | { sessions?: ApiSession[]; rows?: ApiSession[]; items?: ApiSession[] } | null;
+      sessions?: ApiSession[];
+      message?: string;
+      error?: string | { message?: string } | null;
+    };
+
+const FALLBACK_SESSION_IMAGE =
+  'https://images.unsplash.com/photo-1588075592446-265fd1e6e76f?w=600&q=80';
+
+function extractApiSessions(payload: SessionsApiResponse): ApiSession[] {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload.data)) return payload.data;
+  if (payload.data && typeof payload.data === 'object') {
+    if (Array.isArray(payload.data.sessions)) return payload.data.sessions;
+    if (Array.isArray(payload.data.rows)) return payload.data.rows;
+    if (Array.isArray(payload.data.items)) return payload.data.items;
+  }
+  if (Array.isArray(payload.sessions)) return payload.sessions;
+  return [];
+}
+
+function extractSessionsError(payload: SessionsApiResponse): string {
+  if (Array.isArray(payload)) return 'Could not load sessions. Please try again.';
+  if (payload.error && typeof payload.error === 'object' && payload.error.message?.trim()) {
+    return payload.error.message.trim();
+  }
+  if (typeof payload.error === 'string' && payload.error.trim()) return payload.error.trim();
+  if (typeof payload.message === 'string' && payload.message.trim()) return payload.message.trim();
+  return 'Could not load sessions. Please try again.';
+}
+
+function formatSessionDate(start?: string | null, end?: string | null): string {
+  const startDate = start ? new Date(start) : null;
+  const endDate = end ? new Date(end) : null;
+  const formatter = new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+
+  if (startDate && !Number.isNaN(startDate.getTime())) {
+    const startText = formatter.format(startDate);
+    if (endDate && !Number.isNaN(endDate.getTime())) {
+      const endText = formatter.format(endDate);
+      return startText === endText ? startText : `${startText} - ${endText}`;
+    }
+    return startText;
+  }
+
+  return 'Date to be announced';
+}
+
+function formatSessionDuration(start?: string | null, end?: string | null): string {
+  const startDate = start ? new Date(start) : null;
+  const endDate = end ? new Date(end) : null;
+  if (startDate && endDate && !Number.isNaN(startDate.getTime()) && !Number.isNaN(endDate.getTime())) {
+    const days = Math.max(
+      1,
+      Math.round((endDate.getTime() - startDate.getTime()) / 86_400_000) + 1
+    );
+    return days === 1 ? '1 day' : `${days} days`;
+  }
+  return 'Session';
+}
+
+function mapSessionGroup(status?: string | null, videoUrl?: string | null): SessionGroup {
+  const normalized = (status ?? '').trim().toUpperCase();
+  if (normalized === 'UPCOMING' || normalized === 'SCHEDULED') return 'Upcoming';
+  if (videoUrl) return 'Watch Session';
+  return 'Conducted';
+}
+
+function mapApiSessionToItem(session: ApiSession, index: number): SessionItem {
+  const shortDescription = session.short_description?.trim() || 'Session details will be shared soon.';
+  const description = session.description?.trim() || shortDescription;
+
+  return {
+    id: String(session.uuid ?? session.id ?? session.session_code ?? `session-${index}`),
+    group: mapSessionGroup(session.status, session.video_url),
+    title: session.session_name?.trim() || 'Session',
+    shortDescription,
+    description,
+    date: formatSessionDate(session.start_date, session.end_date),
+    duration: formatSessionDuration(session.start_date, session.end_date),
+    imageUri: session.banner_image_url?.trim() || FALLBACK_SESSION_IMAGE,
+    bullets: [shortDescription],
+    whyItMatters: description,
+    tipsForParents: 'Please check the session details and follow updates from the school.',
+  };
+}
+
 
 // ─── Status Pill ──────────────────────────────────────────────────────────────
 
@@ -498,10 +543,14 @@ function SessionDetail({
 const SessionsScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const { showToast } = useToast();
 
   const rootRef = useRef<RNView | null>(null);
   const cardRefs = useRef<Record<string, RNView | null>>({});
 
+  const [sessionItems, setSessionItems] = useState<SessionItem[]>([]);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(true);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [selectedSession, setSelectedSession] = useState<SessionItem | null>(null);
   const [overlayMounted, setOverlayMounted] = useState(false);
   const [containerHeight, setContainerHeight] = useState(0);
@@ -537,13 +586,38 @@ const SessionsScreen: React.FC = () => {
     [insets.bottom]
   );
 
+  const loadSessions = useCallback(async () => {
+    setIsLoadingSessions(true);
+    setSessionsError(null);
+    try {
+      const response = await apiClient.get<SessionsApiResponse>('/api/v1/sessions');
+      const responseData = response.data;
+      if (!Array.isArray(responseData) && responseData.success === false) {
+        throw new Error(extractSessionsError(responseData));
+      }
+      const apiSessions = extractApiSessions(responseData);
+      setSessionItems(apiSessions.map(mapApiSessionToItem));
+    } catch (error) {
+      const message = getDisplayMessage(error);
+      setSessionItems([]);
+      setSessionsError(message);
+      showToast({ message, type: 'error', durationMs: 4000 });
+    } finally {
+      setIsLoadingSessions(false);
+    }
+  }, [showToast]);
+
+  useEffect(() => {
+    loadSessions();
+  }, [loadSessions]);
+
   const groupedSessions = useMemo(
     () =>
       SESSION_GROUPS.map((group) => ({
         group,
-        sessions: SESSIONS.filter((s) => s.group === group),
-      })),
-    []
+        sessions: sessionItems.filter((s) => s.group === group),
+      })).filter(({ sessions: groupSessions }) => groupSessions.length > 0),
+    [sessionItems]
   );
 
   const openDetail = useCallback(
@@ -676,10 +750,35 @@ const SessionsScreen: React.FC = () => {
 
           <ScrollView
             style={styles.scroll}
-            contentContainerStyle={[styles.scrollContent]}
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPad }]}
             showsVerticalScrollIndicator={false}
           >
-            {groupedSessions.map(({ group, sessions }, groupIndex) => (
+            {isLoadingSessions ? (
+              <View style={styles.stateContainer}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.stateTitle}>Loading sessions</Text>
+              </View>
+            ) : sessionsError ? (
+              <View style={styles.stateContainer}>
+                <Icon name="error-outline" size={28} color={colors.error} />
+                <Text style={styles.stateTitle}>Could not load sessions</Text>
+                <Text style={styles.stateBody}>{sessionsError}</Text>
+                <Pressable
+                  onPress={loadSessions}
+                  style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry loading sessions"
+                >
+                  <Icon name="refresh" size={16} color={colors.surface} />
+                  <Text style={styles.retryButtonText}>Retry</Text>
+                </Pressable>
+              </View>
+            ) : groupedSessions.length === 0 ? (
+              <View style={styles.stateContainer}>
+                <Icon name="event-busy" size={28} color={colors.textMuted} />
+                <Text style={styles.stateTitle}>No sessions available</Text>
+              </View>
+            ) : groupedSessions.map(({ group, sessions: groupSessions }, groupIndex) => (
               <Animated.View
                 key={group}
                 entering={FadeInDown.delay(groupIndex * 85)
@@ -688,7 +787,7 @@ const SessionsScreen: React.FC = () => {
                   .stiffness(220)}
               >
 
-                {sessions.map((session, sessionIndex) => {
+                {groupSessions.map((session, sessionIndex) => {
                   const isExpanded = overlayMounted && selectedSession?.id === session.id;
                   const isUpcoming = session.group === 'Upcoming';
 
@@ -765,6 +864,45 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xs,
     paddingBottom: spacing.lg,
+  },
+  stateContainer: {
+    minHeight: 260,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
+  },
+  stateTitle: {
+    ...textStyles.headingMedium,
+    fontSize: 16,
+    color: colors.ink,
+    textAlign: 'center',
+  },
+  stateBody: {
+    ...textStyles.bodyMedium,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  retryButton: {
+    marginTop: spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  retryButtonPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.98 }],
+  },
+  retryButtonText: {
+    fontFamily: typography.fontFamily.primary,
+    fontSize: typography.fontSize.sm,
+    fontWeight: '800',
+    color: colors.surface,
   },
   headerAction: {
     width: 44,
