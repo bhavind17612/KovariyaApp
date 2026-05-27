@@ -30,12 +30,10 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import {
 	clearOnboardingTokens,
-	getApiBase,
-	buildAuthHeaders,
-	extractApiError,
 	getOnboardingAccessToken,
 	getOnboardingRefreshToken,
 } from '../../services/apiService';
+import { getDisplayMessage } from '../../utils/errorParser';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -86,7 +84,7 @@ const ConfettiParticle = ({
 			opacity.value = withTiming(0, { duration: 300 });
 		}, delay + 1000);
 		return () => clearTimeout(cleanup);
-	}, []);
+	}, [delay, opacity, rot, ty]);
 
 	const style = useAnimatedStyle(() => ({
 		transform: [{ translateY: ty.value }, { rotate: `${rot.value}deg` }],
@@ -123,7 +121,7 @@ interface Props { navigation: any; route: any; }
 
 export function OnboardingScreen4({ navigation, route }: Props) {
 	const insets = useSafeAreaInsets();
-	const { completeAuthentication } = useAuth();
+	const { completeOnboardingAuthentication } = useAuth();
 	const { showToast } = useToast();
 	const accessToken: string | null = route?.params?.accessToken ?? null;
 	// parentData forwarded from Screen1 → Screen2 → Screen3 → Screen4
@@ -222,49 +220,31 @@ export function OnboardingScreen4({ navigation, route }: Props) {
 		if (!isComplete || isLoggingIn) return;
 		Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 		setIsLoggingIn(true);
-		console.log("dsfsds");
 
 		try {
 			const finalAccessToken = accessToken ?? (await getOnboardingAccessToken());
-			const finalRefreshToken = (await getOnboardingRefreshToken()) ?? '';
+			const finalRefreshToken = await getOnboardingRefreshToken();
 
-			// ── 1. Call set-pin API ──────────────────────────────────────────────
-			const apiBase = getApiBase();
-			const authHeaders = await buildAuthHeaders(finalAccessToken);
-			console.log("Callign api");
-			const res = await fetch(`${apiBase}/api/v1/parents/onboarding/set-pin`, {
-				method: 'POST',
-				headers: authHeaders,
-				body: JSON.stringify({
-					parent_id: parentData?.parent_id,
-					pin,
-				}),
-			});
-
-			const responseData = await res.json().catch(() => ({}));
-
-			if (!res.ok) {
-				const errMsg = extractApiError(responseData, 'Failed to set PIN. Please try again.');
-				showToast({ message: errMsg, type: 'error' });
+			if (!finalAccessToken || !finalRefreshToken) {
+				showToast({ message: 'Your onboarding session expired. Please verify OTP again.', type: 'error' });
 				return;
 			}
 
-			// ── 2. Persist auth tokens & mark onboarding complete ────────────────
-			if (finalAccessToken) {
-				await completeAuthentication({
+			const onboardingSuccessMsg = await completeOnboardingAuthentication(
+				pin,
+				{
 					accessToken: finalAccessToken,
 					refreshToken: finalRefreshToken,
 					expiresAt: Date.now() + 3_600_000,
-				});
-			}
+				},
+				parentData,
+			);
 
-			// ── 3. Clean up temporary onboarding tokens ──────────────────────────
 			await clearOnboardingTokens();
 
-			const successMsg = responseData.data?.message || responseData.message || 'PIN set! Welcome to Kovariya 🎉';
-			showToast({ message: successMsg, type: 'success' });
+			showToast({ message: onboardingSuccessMsg || 'PIN set! Welcome to Kovariya', type: 'success' });
 		} catch (err: any) {
-			const msg = err?.message || 'Something went wrong. Please try again.';
+			const msg = getDisplayMessage(err) || err?.message || 'Something went wrong. Please try again.';
 			showToast({ message: msg, type: 'error' });
 		} finally {
 			setIsLoggingIn(false);
@@ -440,7 +420,7 @@ export function OnboardingScreen4({ navigation, route }: Props) {
 							>
 								<Pressable
 									android_ripple={{ color: 'rgba(255, 255, 255, 0.6)', foreground: true }}
-									style={({ pressed }) => [
+									style={[
 										styles.ctaBtn,
 										!isComplete ? styles.ctaBtnDisabled : null
 									]}

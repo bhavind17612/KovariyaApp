@@ -34,6 +34,7 @@ interface AuthContextType extends AuthState {
   logout: () => Promise<void>;
   refreshAuth: () => Promise<void>;
   completeAuthentication: (tokens: AuthTokens, user?: User) => Promise<void>;
+  completeOnboardingAuthentication: (pin: string, tokens: AuthTokens, parentData?: Record<string, unknown> | null) => Promise<string | undefined>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -142,6 +143,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     [setAuthenticated, setError, setSigningIn],
   );
 
+  const completeOnboardingAuthentication = useCallback(
+    async (pin: string, newTokens: AuthTokens, parentData?: Record<string, unknown> | null): Promise<string | undefined> => {
+      setSigningIn(true);
+      try {
+        const response = await authService.completeOnboarding({
+          pin,
+          tokens: newTokens,
+          parentData,
+        });
+        setAuthenticated(response.parent, response.tokens);
+        return response.message;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Authentication failed');
+        throw err;
+      }
+    },
+    [setAuthenticated, setError, setSigningIn],
+  );
+
   const logout = useCallback(async (): Promise<void> => {
     try {
       await authService.logout();
@@ -179,6 +199,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       logout,
       refreshAuth,
       completeAuthentication,
+      completeOnboardingAuthentication,
     }),
     // State from Zustand: reference changes only when the value changes.
     // Actions: stable useCallback refs.

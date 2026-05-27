@@ -12,6 +12,7 @@
  */
 import { isAxiosError } from 'axios';
 import { apiClient } from '../api/client';
+import { ENDPOINTS } from '../api/endpoints';
 import { storage } from '../storage/storage';
 import { STORAGE_KEYS } from '../storage/storageKeys';
 import { tokenManager } from '../api/tokenManager';
@@ -30,7 +31,10 @@ type ApiPayload = {
   tokens?: { accessToken?: string; refreshToken?: string; expiresAt?: number };
   accessToken?: string;
   refreshToken?: string;
+  access_token?: string;
+  refresh_token?: string;
   expiresAt?: number;
+  expires_at?: number;
 };
 
 // Envelope:  { success, data: { parent, tokens }, error: { code, message }, meta }
@@ -41,6 +45,16 @@ type ApiJson = ApiPayload & {
   error?: ApiErrorObject | string | null;
   message?: string;
   meta?: unknown;
+};
+
+type OnboardingCompletionInput = {
+  pin: string;
+  parentData?: Record<string, unknown> | null;
+  tokens: AuthTokens;
+};
+
+type AuthResponseWithMessage = AuthResponse & {
+  message?: string;
 };
 
 function parseErrorMessage(data: unknown, status: number): string {
@@ -111,9 +125,9 @@ function extractAuthResponse(data: ApiJson): AuthResponse {
     throw new Error('Unexpected response: missing user data');
   }
 
-  const accessToken = payload.tokens?.accessToken ?? payload.accessToken;
-  const refreshToken = payload.tokens?.refreshToken ?? payload.refreshToken;
-  const expiresAt = payload.tokens?.expiresAt ?? payload.expiresAt;
+  const accessToken = payload.tokens?.accessToken ?? payload.accessToken ?? payload.access_token;
+  const refreshToken = payload.tokens?.refreshToken ?? payload.refreshToken ?? payload.refresh_token;
+  const expiresAt = payload.tokens?.expiresAt ?? payload.expiresAt ?? payload.expires_at;
 
   if (!accessToken || !refreshToken) {
     throw new Error('Unexpected response: missing tokens');
@@ -127,6 +141,38 @@ function extractAuthResponse(data: ApiJson): AuthResponse {
       expiresAt: typeof expiresAt === 'number' ? expiresAt : Date.now() + 3_600_000,
     },
   };
+}
+
+function extractOptionalAuthResponse(data: ApiJson, fallbackParent: Record<string, unknown> | null | undefined, fallbackTokens: AuthTokens): AuthResponse {
+  const payload: ApiPayload = (data.data && typeof data.data === 'object') ? data.data : data;
+  const rawUser = payload.parent ?? payload.user ?? fallbackParent;
+
+  if (!rawUser || typeof rawUser !== 'object') {
+    throw new Error('Unexpected response: missing user data');
+  }
+
+  const accessToken = payload.tokens?.accessToken ?? payload.accessToken ?? payload.access_token ?? fallbackTokens.accessToken;
+  const refreshToken = payload.tokens?.refreshToken ?? payload.refreshToken ?? payload.refresh_token ?? fallbackTokens.refreshToken;
+  const expiresAt = payload.tokens?.expiresAt ?? payload.expiresAt ?? payload.expires_at ?? fallbackTokens.expiresAt;
+
+  return {
+    parent: mapParentToUser({
+      ...rawUser,
+      onboarding_stage: (rawUser as Record<string, unknown>).onboarding_stage ?? 4,
+      has_pin: (rawUser as Record<string, unknown>).has_pin ?? true,
+    } as Record<string, unknown>),
+    tokens: {
+      accessToken,
+      refreshToken,
+      expiresAt: typeof expiresAt === 'number' ? expiresAt : Date.now() + 3_600_000,
+    },
+  };
+}
+
+function extractSuccessMessage(data: ApiJson, fallback: string): string {
+  const payload = (data.data && typeof data.data === 'object') ? data.data : data;
+  const message = (payload as ApiJson).message ?? data.message;
+  return typeof message === 'string' && message.trim() ? message : fallback;
 }
 
 // ─── Real HTTP helpers ─────────────────────────────────────────────────────
@@ -294,6 +340,36 @@ class AuthService {
     const response = await mockApi.loginByEmail(email);
     await this._persistSession(response);
     return response;
+  }
+
+  async completeOnboarding(input: OnboardingCompletionInput): Promise<AuthResponseWithMessage> {
+    await tokenManager.setTokens(input.tokens);
+
+    let data: ApiJson;
+    try {
+      const res = await apiClient.post(ENDPOINTS.ONBOARDING.SET_PIN, {
+        parent_id: input.parentData?.parent_id,
+        pin: input.pin,
+      });
+      data = res.data as ApiJson;
+    } catch (err) {
+      if (isAxiosError(err) && err.response) {
+        throw new Error(parseErrorMessage(err.response.data as ApiJson, err.response.status));
+      }
+      throw err;
+    }
+
+    if (data.success === false) {
+      throw new Error(parseErrorMessage(data, 200) || 'Failed to set PIN. Please try again.');
+    }
+
+    const response = extractOptionalAuthResponse(data, input.parentData, input.tokens);
+    await this._persistSession(response);
+
+    return {
+      ...response,
+      message: extractSuccessMessage(data, 'PIN set! Welcome to Kovariya'),
+    };
   }
 
   /**
