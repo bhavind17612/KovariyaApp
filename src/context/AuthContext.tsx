@@ -30,6 +30,8 @@ interface AuthContextType extends AuthState {
   login: (credentials: LoginCredentials) => Promise<void>;
   loginByEmail: (email: string) => Promise<void>;
   loginWithPin: (pin: string) => Promise<void>;
+  /** Verifies a forgot-PIN email OTP. Same session handling as loginWithPin. */
+  loginWithEmailOtp: (email: string, otp: string) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   refreshAuth: () => Promise<void>;
@@ -105,6 +107,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setAuthenticated(response.parent, response.tokens);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'PIN login failed');
+      throw err;
+    }
+  }, [setAuthenticated, setError, setSigningIn]);
+
+  const loginWithEmailOtp = useCallback(async (email: string, otp: string): Promise<void> => {
+    setSigningIn(true);
+    try {
+      const response = await authService.loginWithEmailOtp(email, otp);
+      setAuthenticated(response.parent, response.tokens);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'OTP verification failed');
       throw err;
     }
   }, [setAuthenticated, setError, setSigningIn]);
@@ -202,6 +215,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       login,
       loginByEmail,
       loginWithPin,
+      loginWithEmailOtp,
       register,
       logout,
       refreshAuth,

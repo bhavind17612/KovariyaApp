@@ -10,6 +10,11 @@ export const ENDPOINTS = {
     LOGOUT: '/api/v1/parents/auth/logout',
     REFRESH_TOKEN: '/api/v1/auth/refresh-token',
     VERIFY_PIN: '/api/v1/parents/auth/verify-pin',
+    FORGOT_PIN: {
+      SEND_OTP: '/api/v1/parents/auth/forgot-pin/send-otp',
+      VERIFY_OTP: '/api/v1/parents/auth/forgot-pin/verify-otp',
+      RESEND_OTP: '/api/v1/parents/auth/forgot-pin/resend-otp',
+    },
   },
 
   ONBOARDING: {

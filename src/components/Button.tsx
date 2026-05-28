@@ -114,7 +114,7 @@ export const Button = React.memo(function Button({
     let variantStyle: ViewStyle;
     switch (variant) {
       case 'secondary':
-        variantStyle = { backgroundColor: colors.mintSoft };
+        variantStyle = { backgroundColor: colors.mintSoft, borderWidth:1.5 };
         break;
       case 'outline':
         variantStyle = {

@@ -181,7 +181,7 @@ const ProfileScreen: React.FC = () => {
   const parentInfo = {
     name: user?.name || 'Wellness User',
     email: user?.email || 'user@kovariya.com',
-    phone: '+1 (555) 123-4567',
+    phone: user?.mobileNumber || '+1 (555) 123-4567',
     memberSince: user?.createdAt ? formatAppMonthYear(user.createdAt) || 'Jan 2024' : 'Jan 2024',
   };
 

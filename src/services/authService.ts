@@ -330,6 +330,79 @@ class AuthService {
     return response;
   }
 
+  /**
+   * Triggers a forgot-PIN OTP email to the given address.
+   * Public endpoint — no auth token required.
+   * Returns the server's success message to show as a toast.
+   */
+  async sendForgotPinOtp(email: string): Promise<string> {
+    let data: ApiJson;
+    try {
+      const res = await apiClient.post(
+        ENDPOINTS.AUTH.FORGOT_PIN.SEND_OTP,
+        { email: email.trim().toLowerCase() },
+        { skipAuth: true },
+      );
+      data = res.data as ApiJson;
+    } catch (err) {
+      if (isAxiosError(err) && err.response) {
+        throw new Error(parseErrorMessage(err.response.data as ApiJson, err.response.status));
+      }
+      throw err;
+    }
+    return extractSuccessMessage(data, 'OTP sent to your email');
+  }
+
+  /**
+   * Re-sends the forgot-PIN OTP. Returns the server's success message.
+   * Public endpoint — no auth token required.
+   */
+  async resendForgotPinOtp(email: string): Promise<string> {
+    let data: ApiJson;
+    try {
+      const res = await apiClient.post(
+        ENDPOINTS.AUTH.FORGOT_PIN.RESEND_OTP,
+        { email: email.trim().toLowerCase() },
+        { skipAuth: true },
+      );
+      data = res.data as ApiJson;
+    } catch (err) {
+      if (isAxiosError(err) && err.response) {
+        throw new Error(parseErrorMessage(err.response.data as ApiJson, err.response.status));
+      }
+      throw err;
+    }
+    return extractSuccessMessage(data, 'OTP resent to your email');
+  }
+
+  /**
+   * Verifies the forgot-PIN OTP and completes authentication.
+   * The verify-otp endpoint returns the exact same shape as verify-pin,
+   * so we reuse extractAuthResponse and _persistSession unchanged.
+   */
+  async loginWithEmailOtp(email: string, otp: string): Promise<AuthResponse> {
+    let data: ApiJson;
+    try {
+      const res = await apiClient.post(
+        ENDPOINTS.AUTH.FORGOT_PIN.VERIFY_OTP,
+        { email: email.trim().toLowerCase(), otp_code:otp },
+        { skipAuth: true },
+      );
+      data = res.data as ApiJson;
+    } catch (err) {
+      if (isAxiosError(err) && err.response) {
+        throw new Error(parseErrorMessage(err.response.data as ApiJson, err.response.status));
+      }
+      throw err;
+    }
+    if (data.success === false || (!data.data?.parent && !data.data?.user && !data.parent && !data.user)) {
+      throw new Error(parseErrorMessage(data, 200) || 'Invalid or expired OTP. Please try again.');
+    }
+    const response = extractAuthResponse(data);
+    await this._persistSession(response);
+    return response;
+  }
+
   async register(data: RegisterData): Promise<AuthResponse> {
     const response = await mockApi.register(data);
     await this._persistSession(response);

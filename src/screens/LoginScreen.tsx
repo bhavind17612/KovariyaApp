@@ -6,6 +6,7 @@ import {
   Pressable,
   TextInput,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   ScrollView,
   Dimensions,
@@ -23,6 +24,7 @@ import Animated, {
   withSequence,
   withDelay,
   interpolate,
+  Extrapolation,
   Easing,
   FadeIn,
   FadeInDown,
@@ -36,10 +38,18 @@ import { colors, spacing, borderRadius, shadows, textStyles } from '../theme';
 import { InputField } from '../components/InputField';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { LoginCredentials } from '../types/auth';
 import { getDisplayMessage } from '../utils/errorParser';
+import { authService } from '../services/authService';
 
 const { width: SW } = Dimensions.get('window');
+
+// Height of the illustration card section (height + marginBottom from styles).
+// Used to compute how far to translateY the content when the PIN keyboard opens.
+const ILLUS_SECTION_H = 200 + spacing.lg;
+// Height of the back-button spacer that sits above the illustration.
+const SPACER_H = 40 + spacing.sm + spacing.xs;
+// Total upward shift so the PIN form sits flush against the safe-area top edge.
+const PIN_KEYBOARD_SHIFT = ILLUS_SECTION_H + SPACER_H;
 
 // ─── Animated PIN / OTP box ─────────────────────────────────────────────────
 const DigitBox = ({
@@ -103,7 +113,7 @@ interface LoginProps {
 }
 
 export function LoginScreen({ navigation }: LoginProps) {
-  const { loginWithPin, loginByEmail, isSigningIn } = useAuth();
+  const { loginWithPin, loginWithEmailOtp } = useAuth();
   const { showToast } = useToast();
 
   const [rememberedParentId, setRememberedParentId] = useState<string | null>(null);
@@ -134,9 +144,67 @@ export function LoginScreen({ navigation }: LoginProps) {
   const [showOtpEntry, setShowOtpEntry] = useState(false);
   const [otp, setOtp] = useState('');
   const [isOtpFocused, setIsOtpFocused] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [resendingOtp, setResendingOtp] = useState(false);
   const [timer, setTimer] = useState(60);
   const [timerActive, setTimerActive] = useState(false);
   const otpInputRef = useRef<TextInput>(null);
+
+  // ── Keyboard-lift animation (PIN mode only) ───────────────────────────────
+  // Translates the entire content block upward by PIN_KEYBOARD_SHIFT when the
+  // soft keyboard opens so the PIN boxes slide to the top of the visible area.
+  const keyboardOffset = useSharedValue(0);
+
+  const contentShiftStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: keyboardOffset.value }],
+  }));
+
+  // Fade the illustration out as the form starts lifting (first 40 % of shift).
+  const illusKbStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      keyboardOffset.value,
+      [-PIN_KEYBOARD_SHIFT * 0.4, 0],
+      [0, 1],
+      Extrapolation.CLAMP,
+    ),
+  }));
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const duration = Platform.OS === 'ios' ? 260 : 300;
+
+    const showSub = Keyboard.addListener(showEvent, () => {
+      if (mode === 'pin') {
+        keyboardOffset.value = withTiming(-PIN_KEYBOARD_SHIFT, {
+          duration,
+          easing: Easing.out(Easing.cubic),
+        });
+      }
+    });
+
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      keyboardOffset.value = withTiming(0, {
+        duration,
+        easing: Easing.out(Easing.cubic),
+      });
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [mode]);
+
+  // Reset shift immediately when leaving PIN mode so the email form isn't offset.
+  useEffect(() => {
+    if (mode !== 'pin') {
+      keyboardOffset.value = withTiming(0, {
+        duration: 260,
+        easing: Easing.out(Easing.cubic),
+      });
+    }
+  }, [mode]);
 
   // ── Slide animation (PIN ↔ Email) ─────────────────────────────────────────
   const pinX = useSharedValue(0);
@@ -243,7 +311,7 @@ export function LoginScreen({ navigation }: LoginProps) {
   const validateEmail = (v: string) =>
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 
-  const handleSendOtp = () => {
+  const handleSendOtp = async () => {
     if (sendingOtp) return;
 
     if (!email.trim()) {
@@ -258,56 +326,69 @@ export function LoginScreen({ navigation }: LoginProps) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setSendingOtp(true);
 
-    // Simulate sending OTP
-    setTimeout(() => {
-      setSendingOtp(false);
+    try {
+      const msg = await authService.sendForgotPinOtp(email);
+      showToast({ message: msg, type: 'success', durationMs: 3000 });
       setShowOtpEntry(true);
       setTimer(60);
       setTimerActive(true);
 
-      // Slide to OTP entry
       emailX.value = withTiming(-SW, { duration: 360, easing: Easing.inOut(Easing.cubic) });
       emailOtpX.value = withTiming(0, { duration: 360, easing: Easing.inOut(Easing.cubic) });
-
       setTimeout(() => otpInputRef.current?.focus(), 500);
-    }, 1500);
+    } catch (err) {
+      showToast({ message: getDisplayMessage(err), type: 'error', durationMs: 4000 });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setSendingOtp(false);
+    }
   };
 
   const handleOtpChange = (text: string) => {
+    if (verifyingOtp) return;
     const cleaned = text.replace(/[^0-9]/g, '').slice(0, 4);
     setOtp(cleaned);
-
     if (cleaned.length === 4) {
       verifyEmailOtp(cleaned);
     }
   };
 
-  const verifyEmailOtp = async (_enteredOtp: string) => {
+  const verifyEmailOtp = async (enteredOtp: string) => {
+    setVerifyingOtp(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
-      // Accept any 4-digit OTP for now — will validate via API later
-      await new Promise((r) => setTimeout(r, 800));
-
+      await loginWithEmailOtp(email.trim().toLowerCase(), enteredOtp);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      // Authenticate by email only (OTP already validated above)
-      await loginByEmail(email.trim().toLowerCase());
+      // Navigation handled automatically by AppNavigator (isAuthenticated → true)
     } catch (err) {
       setOtp('');
-      const msg = err instanceof Error ? err.message : 'OTP verification failed';
-      showToast({ message: msg, type: 'error', durationMs: 4000 });
+      showToast({ message: getDisplayMessage(err), type: 'error', durationMs: 4000 });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setTimeout(() => otpInputRef.current?.focus(), 300);
+    } finally {
+      setVerifyingOtp(false);
     }
   };
 
-  const resendOtp = () => {
-    setTimer(60);
-    setTimerActive(true);
-    setOtp('');
-    otpInputRef.current?.focus();
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    showToast({ message: 'OTP resent to your email', type: 'info', durationMs: 2500 });
+  const resendOtp = async () => {
+    if (resendingOtp) return;
+    setResendingOtp(true);
+
+    try {
+      const msg = await authService.resendForgotPinOtp(email);
+      setTimer(60);
+      setTimerActive(true);
+      setOtp('');
+      showToast({ message: msg, type: 'info', durationMs: 2500 });
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      otpInputRef.current?.focus();
+    } catch (err) {
+      showToast({ message: getDisplayMessage(err), type: 'error', durationMs: 4000 });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setResendingOtp(false);
+    }
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -318,13 +399,18 @@ export function LoginScreen({ navigation }: LoginProps) {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        enabled={mode !== 'pin'}
       >
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          scrollEnabled={false}
         >
+          {/* translateY block: slides the whole content up when PIN keyboard opens */}
+          <Animated.View style={contentShiftStyle}>
+
           {/* Back button */}
           {showBackButton ? (
             <Animated.View entering={FadeIn.duration(200)}>
@@ -336,9 +422,12 @@ export function LoginScreen({ navigation }: LoginProps) {
             <View style={styles.backBtnSpacer} />
           )}
 
-          {/* Illustration — only on PIN screen */}
+          {/* Illustration — only on PIN screen; fades out as form lifts */}
           {mode === 'pin' && (
-            <Animated.View entering={FadeInDown.duration(500).delay(100)}>
+            <Animated.View
+              entering={FadeInDown.duration(500).delay(100)}
+              style={illusKbStyle}
+            >
               <IllustrationCard />
             </Animated.View>
           )}
@@ -573,9 +662,22 @@ export function LoginScreen({ navigation }: LoginProps) {
                 textContentType="oneTimeCode"
               />
 
+              {/* Loading indicator while verifying */}
+              {verifyingOtp && (
+                <View style={styles.verifyingRow}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <Text style={styles.verifyingText}>Verifying…</Text>
+                </View>
+              )}
+
               {/* Timer + Resend */}
               <View style={styles.timerRow}>
-                {timer > 0 ? (
+                {resendingOtp ? (
+                  <View style={styles.resendingRow}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={styles.timerText}>Resending…</Text>
+                  </View>
+                ) : timer > 0 ? (
                   <Text style={styles.timerText}>
                     Resend in{' '}
                     <Text style={{ color: colors.primary, fontWeight: '700' }}>
@@ -598,17 +700,25 @@ export function LoginScreen({ navigation }: LoginProps) {
                   }}
                   style={[
                     styles.ctaBtn,
-                    otp.length < 4 && styles.ctaBtnDisabled,
+                    (otp.length < 4 || verifyingOtp) && styles.ctaBtnDisabled,
                   ]}
-                  onPress={() => otp.length === 4 && verifyEmailOtp(otp)}
-                  disabled={otp.length < 4}
+                  onPress={() => otp.length === 4 && !verifyingOtp && verifyEmailOtp(otp)}
+                  disabled={otp.length < 4 || verifyingOtp}
                 >
-                  <Text style={styles.ctaText}>Verify & Sign In</Text>
-                  <Icon name="arrow-forward" size={20} color={colors.surface} />
+                  {verifyingOtp ? (
+                    <ActivityIndicator size="small" color={colors.surface} />
+                  ) : (
+                    <>
+                      <Text style={styles.ctaText}>Verify & Sign In</Text>
+                      <Icon name="arrow-forward" size={20} color={colors.surface} />
+                    </>
+                  )}
                 </Pressable>
               </View>
             </Animated.View>
           </View>
+
+          </Animated.View>{/* end contentShiftStyle */}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -809,6 +919,11 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '700',
     textDecorationLine: 'underline',
+  },
+  resendingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
 
   // Dev hint
