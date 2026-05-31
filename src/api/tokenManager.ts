@@ -2,9 +2,18 @@ import { storage } from '../storage/storage';
 import { STORAGE_KEYS } from '../storage/storageKeys';
 import { isTokenExpired, isTokenExpiringSoon } from '../utils/tokenUtils';
 import { ENV } from '../config/env';
+import { ENDPOINTS } from './endpoints';
 import type { AuthTokens } from '../types/auth';
 
 type RefreshCallback = (newToken: string | null) => void;
+
+/** Thrown only when the refresh endpoint itself responds with HTTP 401. */
+class RefreshUnauthorizedError extends Error {
+  constructor() {
+    super('Refresh token rejected with 401');
+    this.name = 'RefreshUnauthorizedError';
+  }
+}
 
 /**
  * Token Manager — singleton that owns all in-memory token state.
@@ -171,7 +180,12 @@ class TokenManager {
     } catch (error) {
       this._notifyQueue(null);
       await this.clearTokens();
-      this._logoutHandler?.();
+      // Only force a global logout when the refresh endpoint explicitly rejects
+      // the token (401). Network failures, 5xx errors, and missing tokens are
+      // transient — callers handle them without destroying the session.
+      if (error instanceof RefreshUnauthorizedError) {
+        this._logoutHandler?.();
+      }
       throw error;
     } finally {
       this._isRefreshing = false;
@@ -181,37 +195,48 @@ class TokenManager {
   // ── Private helpers ────────────────────────────────────────────────────────
 
   private async _doRefresh(refreshToken: string): Promise<AuthTokens> {
-    const isLocalDev =
-      ENV.API_BASE_URL.includes('localhost') ||
-      ENV.API_BASE_URL.includes('10.0.2.2');
-
-    if (!isLocalDev) {
-      // ── Real API ──
-      const response = await fetch(`${ENV.API_BASE_URL}/api/v1/auth/refresh-token`, {
+    // Always call the real endpoint — never mock here.
+    // The old isLocalDev branch intercepted real JWTs on Android emulators
+    // (which route through 10.0.2.2) and threw RefreshUnauthorizedError for any
+    // token that didn't start with "mock-refresh", silently logging users out.
+    const response = await fetch(
+      `${ENV.API_BASE_URL}${ENDPOINTS.AUTH.REFRESH_TOKEN}`,
+      {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      });
+        body: JSON.stringify({ refreshToken: refreshToken }),
+      },
+    );
 
-      if (!response.ok) throw new Error(`Refresh failed: ${response.status}`);
+    if (response.status === 401) throw new RefreshUnauthorizedError();
+    if (!response.ok) throw new Error(`Refresh failed: ${response.status}`);
 
-      const data = await response.json();
-      return {
-        accessToken: data.tokens?.accessToken ?? data.accessToken,
-        refreshToken: data.tokens?.refreshToken ?? data.refreshToken ?? refreshToken,
-        expiresAt: data.tokens?.expiresAt ?? data.expiresAt ?? Date.now() + 3_600_000,
-      };
-    }
+    const data = await response.json();
+    const accessToken =
+      data.data?.access_token ??
+      data.data?.accessToken ??
+      data.access_token ??
+      data.accessToken ??
+      data.tokens?.accessToken;
 
-    // ── Mock refresh for local dev ──
-    await new Promise<void>((r) => setTimeout(r, 300));
-    if (!refreshToken.startsWith('mock-refresh')) {
-      throw new Error('Dev mock: invalid refresh token');
-    }
+    if (!accessToken) throw new Error('Refresh response missing access_token');
+
     return {
-      accessToken: `mock-access-${Date.now()}`,
-      refreshToken: `mock-refresh-${Date.now()}`,
-      expiresAt: Date.now() + 3_600_000,
+      accessToken,
+      refreshToken:
+        data.data?.refresh_token ??
+        data.data?.refreshToken ??
+        data.refresh_token ??
+        data.refreshToken ??
+        data.tokens?.refreshToken ??
+        refreshToken,
+      expiresAt:
+        data.data?.expires_at ??
+        data.data?.expiresAt ??
+        data.expires_at ??
+        data.expiresAt ??
+        data.tokens?.expiresAt ??
+        Date.now() + 3_600_000,
     };
   }
 

@@ -8,7 +8,7 @@ export const ENDPOINTS = {
   AUTH: {
     LOGIN: '/api/v1/parents/auth/login',
     LOGOUT: '/api/v1/parents/auth/logout',
-    REFRESH_TOKEN: '/api/v1/auth/refresh-token',
+    REFRESH_TOKEN: '/api/v1/parents/auth/refresh',
     VERIFY_PIN: '/api/v1/parents/auth/verify-pin',
     FORGOT_PIN: {
       SEND_OTP: '/api/v1/parents/auth/forgot-pin/send-otp',
@@ -60,5 +60,24 @@ export const ENDPOINTS = {
 
   SCHOOLS: {
     LIST: '/api/v1/schools',
+  },
+
+  BEHAVIOUR: {
+    /** GET — returns aspects with their ratings and reason chips */
+    ASPECTS: '/api/v1/behaviour/aspects',
+    /** POST — submit a behaviour log entry */
+    ENTRIES: '/api/v1/behaviour/entries',
+  },
+
+  LANGUAGE: {
+    /** GET — list all available languages */
+    LIST: '/api/v1/languages',
+    /** GET — parent's saved language preference; POST — update it */
+    PREFERENCE: '/api/v1/parents/preferences/language',
+  },
+
+  TRANSLATIONS: {
+    /** GET ?language_id=<id> — Rating Sheet UI strings for the given language */
+    RATING_SHEET: '/api/v1/translations/screens/rating-sheet',
   },
 } as const;

@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   useWindowDimensions,
   Animated,
+  ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,18 +34,16 @@ import {
   type AspectRatingPayload,
 } from '../data/aspectRating';
 import { useToast } from '../context/ToastContext';
-import {
-  type SupportedLanguage,
-  getUIStrings,
-  getAspectName,
-  getScaleLabel,
-  getReasonChipLabel,
-} from '../data/aspectRatingI18n';
+
+import { translationService } from '../services/translationService';
+import type { RatingSheetTranslationsApiData } from '../types/translation';
 
 const NEXT_STEP_TOOLTIP_MS = 4000;
 const NEXT_STEP_POPOVER_ESTIMATE_H = 48;
 const NEXT_STEP_POPOVER_GAP = 8;
 const NEXT_STEP_POPOVER_MAX_W = 280;
+
+
 
 type Props = {
   visible: boolean;
@@ -56,8 +55,10 @@ type Props = {
   orderedAspects?: RatingAspectDefinition[];
   /** When provided with a following aspect in `orderedAspects`, enables seamless handoff after save. */
   onSaveAndNext?: (payload: AspectRatingPayload) => void;
-  /** Language to display the sheet in. Defaults to English. */
-  language?: SupportedLanguage;
+  /** Numeric language ID used to fetch translations from the API. Falls back to English when absent. */
+  languageId?: number;
+  /** Child's name shown in save-confirmation toasts. */
+  childName?: string;
 };
 
 export const AspectRatingSheet = React.memo(function AspectRatingSheet({
@@ -67,7 +68,8 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
   onSave,
   orderedAspects,
   onSaveAndNext,
-  language = 'en',
+  languageId,
+  childName = '',
 }: Props) {
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -79,9 +81,120 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
     // 2 columns × 3 rows for the six rating scale options.
     return Math.max(140, Math.floor((inner - gap) / 2));
   }, [windowWidth]);
-  const t = useMemo(() => getUIStrings(language), [language]);
+
+  const [apiTranslations, setApiTranslations] = useState<RatingSheetTranslationsApiData | null>(null);
+  const [isLoadingTranslations, setIsLoadingTranslations] = useState(false);
+  const [translationFetchError, setTranslationFetchError] = useState(false);
+
+  // Fetch translations from the API whenever languageId changes.
+  // No static fallback — the API is the sole source of truth.
+  useEffect(() => {
+    console.log("herer", languageId)
+    if (!languageId) {
+      setApiTranslations(null);
+      setTranslationFetchError(true);
+      setIsLoadingTranslations(false);
+      return;
+    }
+    setIsLoadingTranslations(true);
+    setTranslationFetchError(false);
+    setApiTranslations(null);
+    console.log("getting sheet translations");
+    translationService.getRatingSheetTranslations(languageId)
+      .then((data) => {
+        console.log('data ', data)
+        setApiTranslations(data);
+        setTranslationFetchError(false);
+      })
+      .catch(() => {
+        setApiTranslations(null);
+        setTranslationFetchError(true);
+      })
+      .finally(() => {
+        setIsLoadingTranslations(false);
+      });
+  }, [languageId]);
+
+  // Show a human-readable toast whenever the sheet is open and translations failed to load.
+  useEffect(() => {
+    if (visible && translationFetchError) {
+      showToast({
+        type: 'error',
+        message: "Couldn't load the rating sheet. Please check your internet connection and try again.",
+        durationMs: 5000,
+      });
+    }
+  }, [visible, translationFetchError, showToast]);
+
+  // English defaults used as fallback when the API hasn't responded yet or has failed.
+  const EN_FALLBACK = useMemo(() => ({
+    howWasBehaviour: 'How was behaviour today?',
+    sheetHint: 'Select a rating and add at least 2 reason chips, a text note, or a voice note to save. You can log this multiple times today.',
+    sectionRating: 'Rating',
+    ratingHint: 'Tap a score to choose points',
+    sectionReasons: 'Reasons',
+    reasonHintPositive: 'Positive',
+    reasonHintNeeds: 'Needs work',
+    sectionNote: 'Add note (optional)',
+    notePlaceholder: 'Other reason or extra notes.',
+    voiceNoteAttached: 'Voice note attached',
+    voiceNoteRecord: 'Record voice note (optional)',
+    saveEntry: 'Save entry',
+    save: 'Save',
+    saveAndNext: 'Save & Next',
+    toastMaxReasons: 'You can pick up to two reasons — remove one to choose another.',
+    stepLabel: (c: number, t: number) => `Step ${c} of ${t}`,
+  }), []);
+
+  // Maps API response to the internal uiStrings shape.
+  // Falls back to EN_FALLBACK when apiTranslations is unavailable.
+  const uiStrings = useMemo(() => {
+    if (!apiTranslations) return EN_FALLBACK;
+    const s = apiTranslations.strings;
+    return {
+      howWasBehaviour: s?.howWasBehaviour || EN_FALLBACK.howWasBehaviour,
+      sheetHint: s?.sheetHint || EN_FALLBACK.sheetHint,
+      sectionRating: s?.sectionRating || EN_FALLBACK.sectionRating,
+      ratingHint: s?.ratingHint || EN_FALLBACK.ratingHint,
+      sectionReasons: s?.sectionReasons || EN_FALLBACK.sectionReasons,
+      reasonHintPositive: s?.reasonHintPositive || EN_FALLBACK.reasonHintPositive,
+      reasonHintNeeds: s?.reasonHintNeeds || EN_FALLBACK.reasonHintNeeds,
+      sectionNote: s?.sectionNote || EN_FALLBACK.sectionNote,
+      notePlaceholder: s?.notePlaceholder || EN_FALLBACK.notePlaceholder,
+      voiceNoteAttached: s?.voiceNoteAttached || EN_FALLBACK.voiceNoteAttached,
+      voiceNoteRecord: s?.voiceNoteRecord || EN_FALLBACK.voiceNoteRecord,
+      saveEntry: s?.saveEntry || EN_FALLBACK.saveEntry,
+      save: s?.save || EN_FALLBACK.save,
+      saveAndNext: s?.saveAndNext || EN_FALLBACK.saveAndNext,
+      toastMaxReasons: s?.toastMaxReasons || EN_FALLBACK.toastMaxReasons,
+      stepLabel: (c: number, t: number) => {
+        const tmpl = s?.stepLabel;
+        if (!tmpl) return EN_FALLBACK.stepLabel(c, t);
+        return tmpl.replace('{current}', String(c)).replace('{total}', String(t));
+      },
+    };
+  }, [apiTranslations, EN_FALLBACK]);
+
+  const getScaleLabelFromApi = useCallback((value: number): string => {
+    const raw = apiTranslations?.scale_labels?.[String(value)];
+    console.log('score label', raw)
+    if (raw == null) return String(value);
+    if (typeof raw === 'string') return raw;
+    // API returned a structured object like {id, score, title, sort_order}
+    if (typeof raw === 'object' && 'title' in raw) return String(raw.title);
+    return String(value);
+  }, [apiTranslations]);
+
+  const getReasonChipLabelFromApi = useCallback((chipId: string): string => {
+    const raw = apiTranslations?.reason_chip_labels?.[chipId];
+    if (raw == null) return chipId;
+    if (typeof raw === 'string') return raw;
+    // API returned a structured object — extract title
+    if (typeof raw === 'object' && 'title' in raw) return String(raw.title);
+    return chipId;
+  }, [apiTranslations]);
   const [scale, setScale] = useState<number | null>(null);
-  const [reasonIds, setReasonIds] = useState<string[]>([]);
+  const [reasonIds, setReasonIds] = useState<number[]>([]);
   const [note, setNote] = useState('');
   const [voiceResult, setVoiceResult] = useState<VoiceRecordingResult | null>(null);
   const [voiceModalVisible, setVoiceModalVisible] = useState(false);
@@ -99,7 +212,8 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
   }, [visible, aspect?.id]);
 
   const toggleReason = useCallback(
-    (id: string) => {
+    (id: number) => {
+      console.log("selected chips", id);
       setReasonIds((prev) => {
         if (prev.includes(id)) {
           return prev.filter((x) => x !== id);
@@ -107,15 +221,16 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
         if (prev.length >= MAX_REASON_CHIPS) {
           showToast({
             type: 'error',
-            message: t.toastMaxReasons,
+            message: uiStrings.toastMaxReasons,
             durationMs: 3200,
           });
           return prev;
         }
+        console.log("prev",[...prev, id])
         return [...prev, id];
       });
     },
-    [showToast]
+    [showToast, uiStrings]
   );
 
   const resetForm = useCallback(() => {
@@ -128,8 +243,8 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
     if (!aspect || !orderedAspects?.length) {
       return false;
     }
-    const i = orderedAspects.findIndex((a) => a.id === aspect.id);
-    return i >= 0 && i === orderedAspects.length - 1;
+    const aspectIndex = orderedAspects.findIndex((a) => a.id === aspect.id);
+    return aspectIndex >= 0 && aspectIndex === orderedAspects.length - 1;
   }, [aspect, orderedAspects]);
 
   const isFirstAspect = useMemo(() => {
@@ -146,57 +261,73 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
       scale,
       reasonIds,
       note: note.trim(),
+      voiceNoteUrl: voiceResult?.uri,
     };
-  }, [aspect, scale, reasonIds, note]);
+  }, [aspect, scale, reasonIds, note, voiceResult]);
 
   const handleSaveEntry = useCallback(() => {
     Keyboard.dismiss();
     const payload = buildPayload();
+    console.log('payload ',payload);
     if (!payload) {
       return;
     }
+    showToast({
+      type: 'success',
+      message: childName
+        ? `Saved · today's behaviour log for ${childName}. You can add another log with Save entry.`
+        : "Saved · today's behaviour log. You can add another log with Save entry.",
+    });
     onSave(payload);
     if (isFinalAspect) {
       onClose();
       return;
     }
     resetForm();
-  }, [buildPayload, isFinalAspect, onClose, onSave, resetForm]);
+  }, [buildPayload, childName, isFinalAspect, onClose, onSave, resetForm, showToast]);
 
   const handleSaveAndNext = useCallback(() => {
     Keyboard.dismiss();
     const payload = buildPayload();
+    console.log("save and next", payload)
     if (!payload || !onSaveAndNext) {
       return;
     }
+    showToast({
+      type: 'success',
+      message: childName
+        ? `Saved · ${aspect?.name ?? 'aspect'} for ${childName}`
+        : `Saved · ${aspect?.name ?? 'aspect'}`,
+    });
     scrollRef.current?.scrollTo({ y: 0, animated: true });
     onSaveAndNext(payload);
-  }, [buildPayload, onSaveAndNext]);
+  }, [aspect?.name, buildPayload, childName, onSaveAndNext, showToast]);
 
   const isReasonChipsValid = reasonIds.length <= MAX_REASON_CHIPS;
   const hasSupportInput = reasonIds.length > 0 || note.trim().length > 0 || hasVoiceNote;
-  const canSave = aspect != null && scale !== null && hasSupportInput && isReasonChipsValid;
+  // Block saving while translations are still loading; English fallback is used if the API fails.
+  const canSave = aspect != null && scale !== null && hasSupportInput && isReasonChipsValid && !isLoadingTranslations;
 
   const aspectStepLabel = useMemo(() => {
     if (!aspect || !orderedAspects?.length) {
       return null;
     }
-    const i = orderedAspects.findIndex((a) => a.id === aspect.id);
-    if (i < 0) {
+    const aspectIndex = orderedAspects.findIndex((a) => a.id === aspect.id);
+    if (aspectIndex < 0) {
       return null;
     }
-    return t.stepLabel(i + 1, orderedAspects.length);
-  }, [aspect, orderedAspects, t]);
+    return uiStrings.stepLabel(aspectIndex + 1, orderedAspects.length);
+  }, [aspect, orderedAspects, uiStrings]);
 
   const nextAspect = useMemo(() => {
     if (!aspect || !orderedAspects?.length) {
       return null;
     }
-    const i = orderedAspects.findIndex((a) => a.id === aspect.id);
-    if (i < 0 || i >= orderedAspects.length - 1) {
+    const aspectIndex = orderedAspects.findIndex((a) => a.id === aspect.id);
+    if (aspectIndex < 0 || aspectIndex >= orderedAspects.length - 1) {
       return null;
     }
-    return orderedAspects[i + 1];
+    return orderedAspects[aspectIndex + 1];
   }, [aspect, orderedAspects]);
 
   const showSaveAndNext = Boolean(nextAspect && onSaveAndNext);
@@ -306,8 +437,8 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
   }, [nextStepTooltipLabel, showSaveAndNext, measureNextStepPopover, aspect?.id]);
 
   const title = useMemo(
-    () => (aspect ? `${getAspectName(aspect.id, language)} · ${t.howWasBehaviour}` : ''),
-    [aspect, language, t]
+    () => (aspect ? `${aspect.name} · ${uiStrings.howWasBehaviour}` : ''),
+    [aspect, uiStrings]
   );
 
   if (!aspect) {
@@ -351,238 +482,288 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
             {aspectStepLabel ? (
               <Text style={styles.sheetStep}>{aspectStepLabel}</Text>
             ) : null}
-            <Text style={styles.sheetHint}>{t.sheetHint}</Text>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 100}
-            // style={styles.kb}
-            >
-              <ScrollView
-                ref={scrollRef}
-                style={[styles.scroll, { maxHeight: windowHeight - insets.top - 270 }]}
-                keyboardShouldPersistTaps="handled"
-                keyboardDismissMode="interactive"
-                showsVerticalScrollIndicator={false}
-                nestedScrollEnabled
-              // contentContainerStyle={{ paddingBottom: 100 }}
-              >
-                <Text style={styles.blockLabel}>{t.sectionRating}</Text>
-                <Text style={styles.ratingHint}>{t.ratingHint}</Text>
-                <View style={styles.scaleGrid}>
-                  {RATING_SCALE_OPTIONS.map((opt) => {
-                    const selected = scale === opt.value;
-                    const neg = opt.tier === 'negative';
-                    const ripple = neg
-                      ? { color: 'rgba(220, 38, 38, 0.18)', borderless: false }
-                      : { color: 'rgba(22, 163, 74, 0.18)', borderless: false };
-                    return (
-                      <Pressable
-                        key={opt.value}
-                        onPress={() => setScale(opt.value)}
-                        android_ripple={ripple}
-                        style={({ pressed }) => [
-                          styles.scaleBtn,
-                          { width: scaleBtnWidth },
-                          neg ? styles.scaleBtnNegBase : styles.scaleBtnPosBase,
-                          selected && (neg ? styles.scaleBtnNegSelected : styles.scaleBtnPosSelected),
-                          pressed && styles.scaleBtnPressed,
-                        ]}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected }}
-                        accessibilityLabel={`${getScaleLabel(opt.value, language)}, ${opt.value >= 0 ? '+' : ''}${opt.value} points`}
-                      >
-                        <View style={styles.scaleBtnTextCol}>
-                          <Text
-                            style={[
-                              styles.scaleBtnLabel,
-                              neg ? styles.scaleBtnLabelNeg : styles.scaleBtnLabelPos,
+
+            {/* ── Translation loading state ──────────────────────────────── */}
+            {isLoadingTranslations ? (
+              <View style={styles.translationStateWrap}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={styles.translationStateText}>Loading content…</Text>
+              </View>
+            ) : translationFetchError ? (
+              /* ── Translation error state ──────────────────────────────── */
+              <View style={styles.translationStateWrap}>
+                <View style={styles.translationErrorIcon}>
+                  <Icon name="cloud-off" size={36} color={colors.textMuted} />
+                </View>
+                <Text style={styles.translationErrorTitle}>Content unavailable</Text>
+                <Text style={styles.translationStateText}>
+                  We couldn't load the rating sheet. Please check your internet connection and try again.
+                </Text>
+              </View>
+            ) : uiStrings ? (
+              /* ── Normal form ──────────────────────────────────────────── */
+              <>
+                <Text style={styles.sheetHint}>{uiStrings.sheetHint}</Text>
+                <KeyboardAvoidingView
+                  behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                  keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 100}
+                >
+                  <ScrollView
+                    ref={scrollRef}
+                    style={[styles.scroll, { maxHeight: windowHeight - insets.top - 270 }]}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="interactive"
+                    showsVerticalScrollIndicator={false}
+                    nestedScrollEnabled
+                  >
+                    <Text style={styles.blockLabel}>{uiStrings.sectionRating}</Text>
+                    <Text style={styles.ratingHint}>{uiStrings.ratingHint}</Text>
+                    <View style={styles.scaleGrid}>
+                      {(() => {
+                        // Build scale options from API data; fall back to static list when unavailable.
+                        const scaleItems = apiTranslations?.scale_labels
+                          ? Object.values(apiTranslations.scale_labels)
+                            .filter((raw): raw is import('../types/translation').ScaleLabelEntry =>
+                              typeof raw === 'object' && raw !== null && 'score' in raw
+                            )
+                            .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+                          : RATING_SCALE_OPTIONS.map((o) => ({
+                            id: o.value,
+                            score: o.value,
+                            title: o.label,
+                            sort_order: 0,
+                          }));
+
+                        return scaleItems.map((opt) => {
+                          const neg = opt.score < 0;
+                          const selected = scale === opt.score;
+                          const ripple = neg
+                            ? { color: 'rgba(220, 38, 38, 0.18)', borderless: false }
+                            : { color: 'rgba(22, 163, 74, 0.18)', borderless: false };
+                          return (
+                            <Pressable
+                              key={opt.score}
+                              onPress={() => setScale(opt.score)}
+                              android_ripple={ripple}
+                              style={({ pressed }) => [
+                                styles.scaleBtn,
+                                { width: scaleBtnWidth },
+                                neg ? styles.scaleBtnNegBase : styles.scaleBtnPosBase,
+                                selected && (neg ? styles.scaleBtnNegSelected : styles.scaleBtnPosSelected),
+                                pressed && styles.scaleBtnPressed,
+                              ]}
+                              accessibilityRole="button"
+                              accessibilityState={{ selected }}
+                              accessibilityLabel={`${opt.title}, ${opt.score >= 0 ? '+' : ''}${opt.score} points`}
+                            >
+                              <View style={styles.scaleBtnTextCol}>
+                                <Text
+                                  style={[
+                                    styles.scaleBtnLabel,
+                                    neg ? styles.scaleBtnLabelNeg : styles.scaleBtnLabelPos,
+                                  ]}
+                                  numberOfLines={2}
+                                >
+                                  {opt.title}
+                                </Text>
+                                <Text
+                                  style={[
+                                    styles.scalePoints,
+                                    neg ? styles.scalePointsNeg : styles.scalePointsPos,
+                                  ]}
+                                >
+                                  {opt.score >= 0 ? `+${opt.score}` : `${opt.score}`} pts
+                                </Text>
+                              </View>
+                            </Pressable>
+                          );
+                        });
+                      })()}
+                    </View>
+
+                    <Text style={styles.blockLabel}>
+                      {uiStrings.sectionReasons} <Text style={styles.reasonCount}>({reasonIds.length}/{MAX_REASON_CHIPS})</Text>
+                    </Text>
+                    <Text style={styles.reasonHint}>{uiStrings.reasonHintPositive}</Text>
+                    {(() => {
+                      // Parse all chip entries from the API, filtering to only proper objects.
+                      type ChipEntry = import('../types/translation').ReasonChipLabelEntry & { chipKey: number };
+                      const apiChips: ChipEntry[] = apiTranslations?.reason_chip_labels
+                        ? Object.entries(apiTranslations.reason_chip_labels)
+                          .filter((entry): entry is [string, import('../types/translation').ReasonChipLabelEntry] => {
+                            const val = entry[1];
+                            return typeof val === 'object' && val !== null && 'chip_text' in val && 'sentiment' in val;
+                          })
+                          .map(([key, val]) => ({ ...val, chipKey: val.id }))
+                          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+                        : [
+                          ...REASON_CHIPS_POSITIVE.map((c) => ({ id: 0, chipKey: c.id, chip_text: c.label, sentiment: 'positive' as const, sort_order: 0 })),
+                          ...REASON_CHIPS_NEGATIVE.map((c) => ({ id: 0, chipKey: c.id, chip_text: c.label, sentiment: 'negative' as const, sort_order: 0 })),
+                        ];
+
+                      const positiveChips = apiChips.filter((c) => c.sentiment === 'positive');
+                      const negativeChips = apiChips.filter((c) => c.sentiment === 'negative');
+
+                      const renderChip = (c: ChipEntry) => {
+                        const isPos = c.sentiment === 'positive';
+                        const on = reasonIds.includes(c.chipKey);
+                        return (
+                          <Pressable
+                            key={c.chipKey}
+                            onPress={() => toggleReason(c.chipKey)}
+                            android_ripple={{
+                              color: isPos ? 'rgba(22, 163, 74, 0.14)' : 'rgba(220, 38, 38, 0.14)',
+                              borderless: false,
+                            }}
+                            style={({ pressed }) => [
+                              styles.chip,
+                              isPos ? styles.chipPos : styles.chipNeg,
+                              on && (isPos ? styles.chipPosOn : styles.chipNegOn),
+                              pressed && styles.chipPressed,
                             ]}
-                            numberOfLines={2}
+                            accessibilityRole="checkbox"
+                            accessibilityState={{ checked: on }}
                           >
-                            {getScaleLabel(opt.value, language)}
-                          </Text>
-                          <Text
-                            style={[
-                              styles.scalePoints,
-                              neg ? styles.scalePointsNeg : styles.scalePointsPos,
-                            ]}
-                          >
-                            {opt.value >= 0 ? `+${opt.value}` : `${opt.value}`} pts
+                            <Text
+                              style={[
+                                isPos ? styles.chipText : styles.chipTextNeg,
+                                on && (isPos ? styles.chipTextOn : styles.chipTextNegOn),
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {c.chip_text}
+                            </Text>
+                          </Pressable>
+                        );
+                      };
+
+                      return (
+                        <>
+                          {positiveChips.length > 0 && (
+                            <View style={styles.chipWrap}>
+                              {positiveChips.map(renderChip)}
+                            </View>
+                          )}
+                          {negativeChips.length > 0 && (
+                            <>
+                              <Text style={styles.reasonHint}>{uiStrings.reasonHintNeeds}</Text>
+                              <View style={styles.chipWrap}>
+                                {negativeChips.map(renderChip)}
+                              </View>
+                            </>
+                          )}
+                        </>
+                      );
+                    })()}
+
+                    <Text style={styles.blockLabel}>{uiStrings.sectionNote}</Text>
+                    <TextInput
+                      style={styles.noteInput}
+                      placeholder={uiStrings.notePlaceholder}
+                      placeholderTextColor={colors.textMuted}
+                      value={note}
+                      onChangeText={setNote}
+                      multiline
+                      maxLength={500}
+                      textAlignVertical="top"
+                      onFocus={() => {
+                        setTimeout(() => {
+                          scrollRef.current?.scrollToEnd({ animated: true });
+                        }, 100);
+                      }}
+                    />
+
+                    {/* Voice note section */}
+                    {hasVoiceNote ? (
+                      <View style={styles.voicePreview}>
+                        <View style={styles.voicePreviewLeft}>
+                          <Icon name="mic" size={18} color={colors.primary} />
+                          <Text style={styles.voicePreviewText}>
+                            Voice note · {Math.ceil((voiceResult?.durationMs ?? 0) / 1000)}s
                           </Text>
                         </View>
-                        {/* {selected ? (
-                      <Icon name="check-circle" size={22} color={neg ? '#B91C1C' : '#15803D'} />
+                        <Pressable
+                          style={styles.voiceDeleteBtn}
+                          onPress={() => setVoiceResult(null)}
+                          hitSlop={6}
+                        >
+                          <Icon name="close" size={16} color="#B91C1C" />
+                        </Pressable>
+                      </View>
                     ) : (
-                      <Icon name="touch-app" size={20} color={neg ? 'rgba(153, 27, 27, 0.45)' : 'rgba(22, 101, 52, 0.45)'} />
-                    )} */}
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-                <Text style={styles.blockLabel}>
-                  {t.sectionReasons} <Text style={styles.reasonCount}>({reasonIds.length}/{MAX_REASON_CHIPS})</Text>
-                </Text>
-                <Text style={styles.reasonHint}>{t.reasonHintPositive}</Text>
-                <View style={styles.chipWrap}>
-                  {REASON_CHIPS_POSITIVE.map((c) => {
-                    const on = reasonIds.includes(c.id);
-                    return (
                       <Pressable
-                        key={c.id}
-                        onPress={() => toggleReason(c.id)}
-                        android_ripple={{ color: 'rgba(22, 163, 74, 0.14)', borderless: false }}
-                        style={({ pressed }) => [
-                          styles.chip,
-                          styles.chipPos,
-                          on && styles.chipPosOn,
-                          pressed && styles.chipPressed,
-                        ]}
-                        accessibilityRole="checkbox"
-                        accessibilityState={{ checked: on }}
+                        style={styles.voiceRow}
+                        onPress={() => setVoiceModalVisible(true)}
+                        accessibilityRole="button"
+                        accessibilityLabel="Record voice note"
                       >
-                        <Text style={[styles.chipText, on && styles.chipTextOn]} numberOfLines={1}>
-                          {getReasonChipLabel(c.id, language)}
+                        <Icon name="mic" size={22} color={colors.primary} />
+                        <Text style={styles.voiceText}>
+                          {uiStrings.voiceNoteRecord}
                         </Text>
+                        <Icon name="chevron-right" size={22} color={colors.textMuted} />
                       </Pressable>
-                    );
-                  })}
-                </View>
-
-                <Text style={styles.reasonHint}>{t.reasonHintNeeds}</Text>
-                <View style={styles.chipWrap}>
-                  {REASON_CHIPS_NEGATIVE.map((c) => {
-                    const on = reasonIds.includes(c.id);
-                    return (
-                      <Pressable
-                        key={c.id}
-                        onPress={() => toggleReason(c.id)}
-                        android_ripple={{ color: 'rgba(220, 38, 38, 0.14)', borderless: false }}
-                        style={({ pressed }) => [
-                          styles.chip,
-                          styles.chipNeg,
-                          on && styles.chipNegOn,
-                          pressed && styles.chipPressed,
-                        ]}
-                        accessibilityRole="checkbox"
-                        accessibilityState={{ checked: on }}
-                      >
-                        <Text style={[styles.chipTextNeg, on && styles.chipTextNegOn]} numberOfLines={1}>
-                          {getReasonChipLabel(c.id, language)}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-                <Text style={styles.blockLabel}>{t.sectionNote}</Text>
-                <TextInput
-                  style={styles.noteInput}
-                  placeholder={t.notePlaceholder}
-                  placeholderTextColor={colors.textMuted}
-                  value={note}
-                  onChangeText={setNote}
-                  multiline
-                  maxLength={500}
-                  textAlignVertical="top"
-                  onFocus={() => {
-                    setTimeout(() => {
-                      scrollRef.current?.scrollToEnd({ animated: true });
-                    }, 100);
-                  }}
-                />
-
-                {/* Voice note section */}
-                {hasVoiceNote ? (
-                  <View style={styles.voicePreview}>
-                    <View style={styles.voicePreviewLeft}>
-                      <Icon name="mic" size={18} color={colors.primary} />
-                      <Text style={styles.voicePreviewText}>
-                        Voice note · {Math.ceil((voiceResult?.durationMs ?? 0) / 1000)}s
-                      </Text>
-                    </View>
-                    <Pressable
-                      style={styles.voiceDeleteBtn}
-                      onPress={() => setVoiceResult(null)}
-                      hitSlop={6}
+                    )}
+                  </ScrollView>
+                </KeyboardAvoidingView>
+                <View style={styles.saveFooter}>
+                  {showBtnGuide && showSaveAndNext && (
+                    <Animated.View
+                      style={[styles.btnGuideRow, { opacity: btnGuideOpacity }]}
+                      pointerEvents="none"
                     >
-                      <Icon name="close" size={16} color="#B91C1C" />
-                    </Pressable>
-                  </View>
-                ) : (
-                  <Pressable
-                    style={styles.voiceRow}
-                    onPress={() => setVoiceModalVisible(true)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Record voice note"
-                  >
-                    <Icon name="mic" size={22} color={colors.primary} />
-                    <Text style={styles.voiceText}>
-                      {t.voiceNoteRecord}
-                    </Text>
-                    <Icon name="chevron-right" size={22} color={colors.textMuted} />
-                  </Pressable>
-                )}
-              </ScrollView>
-            </KeyboardAvoidingView>
-            <View style={styles.saveFooter}>
-              {showBtnGuide && showSaveAndNext && (
-                <Animated.View
-                  style={[styles.btnGuideRow, { opacity: btnGuideOpacity }]}
-                  pointerEvents="none"
-                >
-                  <View style={styles.btnGuideHalf}>
-                    <View style={styles.btnGuideBubble}>
-                      <Text style={styles.btnGuideText}>📝 Logs entry, stays here for another</Text>
+                      <View style={styles.btnGuideHalf}>
+                        <View style={styles.btnGuideBubble}>
+                          <Text style={styles.btnGuideText}>📝 Logs entry, stays here for another</Text>
+                        </View>
+                        <View style={styles.btnGuideCaret} />
+                      </View>
+                      <View style={styles.btnGuideHalf}>
+                        <View style={styles.btnGuideBubble}>
+                          <Text style={styles.btnGuideText}>⚡ Saves & moves to next aspect</Text>
+                        </View>
+                        <View style={styles.btnGuideCaret} />
+                      </View>
+                    </Animated.View>
+                  )}
+                  {showSaveAndNext && nextAspect ? (
+                    <View style={styles.saveFooterRow}>
+                      <View style={styles.saveFooterHalf}>
+                        <Button
+                          androidRipple={{ color: 'rgba(255, 255, 255, 0.6)', foreground: true }}
+                          title={uiStrings.save}
+                          variant="primary"
+                          size="small"
+                          onPress={handleSaveEntry}
+                          disabled={!canSave}
+                          style={styles.footerPrimaryBtn}
+                        />
+                      </View>
+                      <View style={styles.saveFooterHalf}>
+                        <Button
+                          androidRipple={{ color: 'rgba(124, 106, 232, 0.6)', foreground: true }}
+                          title={uiStrings.saveAndNext}
+                          variant="outline"
+                          size="small"
+                          onPress={handleSaveAndNext}
+                          disabled={!canSave}
+                          style={styles.footerSecondaryBtn}
+                        />
+                      </View>
                     </View>
-                    <View style={styles.btnGuideCaret} />
-                  </View>
-                  <View style={styles.btnGuideHalf}>
-                    <View style={styles.btnGuideBubble}>
-                      <Text style={styles.btnGuideText}>⚡ Saves & moves to next aspect</Text>
-                    </View>
-                    <View style={styles.btnGuideCaret} />
-                  </View>
-                </Animated.View>
-              )}
-              {showSaveAndNext && nextAspect ? (
-                <View style={styles.saveFooterRow}>
-                  <View style={styles.saveFooterHalf}>
+                  ) : (
                     <Button
-                      androidRipple={{ color: 'rgba(255, 255, 255, 0.6)', foreground: true }}
-                      title={t.save}
+                      title={uiStrings.saveEntry}
                       variant="primary"
                       size="small"
                       onPress={handleSaveEntry}
                       disabled={!canSave}
-                      style={styles.footerPrimaryBtn}
+                      style={styles.footerPrimaryBtnFull}
                     />
-                  </View>
-                  <View style={styles.saveFooterHalf}>
-
-                    <Button
-                      androidRipple={{ color: 'rgba(124, 106, 232, 0.6)', foreground: true }}
-                      title={t.saveAndNext}
-                      variant="outline"
-                      size="small"
-                      onPress={handleSaveAndNext}
-                      disabled={!canSave}
-                      style={styles.footerSecondaryBtn}
-                    />
-
-                  </View>
+                  )}
                 </View>
-              ) : (
-                <Button
-                  title={t.saveEntry}
-                  variant="primary"
-                  size="small"
-                  onPress={handleSaveEntry}
-                  disabled={!canSave}
-                  style={styles.footerPrimaryBtnFull}
-                />
-              )}
-            </View>
+              </>
+            ) : null}
           </View>
         </View>
       </Modal>
@@ -989,5 +1170,39 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '600',
     lineHeight: 15,
+  },
+  // ── Translation loading / error states ────────────────────────────────────
+  translationStateWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl ?? spacing.lg * 1.5,
+    paddingVertical: spacing.xl ?? spacing.lg * 1.5,
+    gap: spacing.md,
+    minHeight: 200,
+  },
+  translationErrorIcon: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    marginBottom: spacing.xs,
+  },
+  translationErrorTitle: {
+    ...textStyles.headingMedium,
+    fontWeight: '700',
+    color: colors.ink,
+    textAlign: 'center',
+  },
+  translationStateText: {
+    ...textStyles.bodyMedium,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    fontSize: 13,
   },
 });

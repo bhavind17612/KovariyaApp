@@ -21,6 +21,13 @@ export const STORAGE_KEYS = {
 
   // ── Parent identity (kept across logout for PIN re-login) ───────────────
   REMEMBERED_PARENT_ID: '@kovariya_remembered_parent_id',
+
+  // ── UI preferences ───────────────────────────────────────────────────────
+  /** Cached { languageId, code } — avoids an API round-trip on cold start */
+  LANGUAGE_PREFERENCE: '@kovariya_language_preference',
+
+  /** Cached Rating Sheet translations keyed by language_id — avoids re-fetching on every open */
+  RATING_SHEET_TRANSLATIONS: '@kovariya_rating_sheet_translations',
 } as const;
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];

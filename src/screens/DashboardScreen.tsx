@@ -22,6 +22,7 @@ import Animated, {
   FadeInDown,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withTiming,
 } from 'react-native-reanimated';
 import {
@@ -32,7 +33,6 @@ import {
   AspectRatingSheet,
   WeeklyAspectProgressChart,
   AIInsightsCard,
-  LanguagePickerSheet,
 } from '../components';
 import {
   colors,
@@ -50,9 +50,13 @@ import {
   type RatingAspectDefinition,
   type AspectRatingPayload,
 } from '../data/aspectRating';
-import { type SupportedLanguage } from '../data/aspectRatingI18n';
+
 import { getWeeklyAspectProgressSeries } from '../data/weeklyAspectProgress';
 import { getAIInsightsForChild } from '../data/aiInsights';
+import { behaviourService } from '../services/behaviourService';
+import { languageService } from '../services/languageService';
+import { getDisplayMessage } from '../utils/errorParser';
+import type { AspectApiIdMaps } from '../types/behaviour';
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
@@ -181,6 +185,30 @@ const WEEK_STRIP = [
   { id: 'sun', label: 'Sun', short: 'Su', score: 8.5 },
 ] as const;
 
+/** Pulsing placeholder tile shown while GET /behaviour/aspects is in flight. */
+const AspectSkeletonTile = React.memo(function AspectSkeletonTile({ width }: { width: number }) {
+  const opacity = useSharedValue(0.45);
+  useEffect(() => {
+    opacity.value = withRepeat(withTiming(1, { duration: 750 }), -1, true);
+  }, [opacity]);
+  const pulseStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return (
+    <Animated.View
+      style={[styles.ratingAspectShadowWrapper, styles.skeletonTile, { width }, pulseStyle]}
+    >
+      <View style={styles.ratingAspectCard}>
+        <View style={styles.skeletonTopAccent} />
+        <View style={styles.ratingAspectTileBody}>
+          <View style={styles.skeletonIconCircle} />
+          <View style={styles.skeletonNameLine} />
+          <View style={styles.skeletonSumLine} />
+          <View style={styles.skeletonPtsLine} />
+        </View>
+      </View>
+    </Animated.View>
+  );
+});
+
 const DashboardScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -210,9 +238,11 @@ const DashboardScreen: React.FC = () => {
     Record<string, TodayMissionStatus>
   >({});
   const [ratingSheetAspect, setRatingSheetAspect] = useState<RatingAspectDefinition | null>(null);
-  const [pendingAspect, setPendingAspect] = useState<RatingAspectDefinition | null>(null);
-  const [langPickerVisible, setLangPickerVisible] = useState(false);
-  const [ratingLang, setRatingLang] = useState<SupportedLanguage>('en');
+  const [ratingLang, setRatingLang] = useState<string>('en');
+  const [ratingLanguageId, setRatingLanguageId] = useState<number | undefined>(undefined);
+  const [aspectApiMaps, setAspectApiMaps] = useState<AspectApiIdMaps | null>(null);
+  const [ratingAspects, setRatingAspects] = useState<RatingAspectDefinition[]>([]);
+  const [aspectsLoading, setAspectsLoading] = useState(true);
   const selectedChild = useMemo(
     () => children.find((c) => c.id === selectedChildId) ?? children[0],
     [children, selectedChildId]
@@ -244,52 +274,69 @@ const DashboardScreen: React.FC = () => {
   }, [selectedChild?.id]);
 
   const openAspectRating = useCallback((aspect: RatingAspectDefinition) => {
-    setPendingAspect(aspect);
-    setLangPickerVisible(true);
+    setRatingSheetAspect(aspect);
   }, []);
-
-  const handleLanguageSelected = useCallback((lang: SupportedLanguage) => {
-    setRatingLang(lang);
-    setLangPickerVisible(false);
-    if (pendingAspect) {
-      setRatingSheetAspect(pendingAspect);
-      setPendingAspect(null);
-    }
-  }, [pendingAspect]);
 
   const closeAspectRating = useCallback(() => setRatingSheetAspect(null), []);
 
   const handleAspectRatingSave = useCallback(
     (payload: AspectRatingPayload) => {
-      const label =
-        DASHBOARD_RATING_ASPECTS.find((a) => a.id === payload.aspectId)?.name ?? 'Aspect';
-      showToast({
-        type: 'success',
-        message: `Saved · today's behaviour log for ${selectedChild?.name ?? ''}. You can add another log with Save entry.`,
-      });
+      // Submit to the API in the background; surface errors via toast
+      // (success toast is shown inside AspectRatingSheet while the modal is still visible)
+      console.log('selectedChild', selectedChild)
+      if (selectedChild) {
+        const aspectId = aspectApiMaps?.aspectIdMap[payload.aspectId] ?? payload.aspectId;
+        console.log("entry of respsect",{
+          student_id: selectedChild.id,
+          aspect_id: aspectId,
+          rating_id: payload.scale,
+          reason_chip_ids: payload.reasonIds,
+          text_note: payload.note || undefined,
+          voice_note_url: payload.voiceNoteUrl,
+        })
+        behaviourService.submitEntry({
+          student_id: selectedChild.id,
+          aspect_id: aspectId,
+          rating_id: payload.scale,
+          reason_chip_ids: payload.reasonIds,
+          text_note: payload.note || undefined,
+          voice_note_url: payload.voiceNoteUrl,
+        }).catch((err) => {
+          showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 4000 });
+        });
+      }
     },
-    [selectedChild?.name, showToast]
+    [selectedChild, aspectApiMaps, showToast]
   );
 
   const handleAspectRatingSaveAndNext = useCallback(
     (payload: AspectRatingPayload) => {
-      const label =
-        DASHBOARD_RATING_ASPECTS.find((a) => a.id === payload.aspectId)?.name ?? 'Aspect';
-      showToast({
-        type: 'success',
-        message: `Saved · ${label} for ${selectedChild?.name ?? ''}`,
-      });
-      const idx = DASHBOARD_RATING_ASPECTS.findIndex((a) => a.id === payload.aspectId);
+      // (success toast is shown inside AspectRatingSheet while the modal is still visible)
+      const idx = ratingAspects.findIndex((a) => a.id === payload.aspectId);
       const next =
-        idx >= 0 && idx < DASHBOARD_RATING_ASPECTS.length - 1
-          ? DASHBOARD_RATING_ASPECTS[idx + 1]
+        idx >= 0 && idx < ratingAspects.length - 1
+          ? ratingAspects[idx + 1]
           : null;
       if (next) {
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         setRatingSheetAspect(next);
       }
+      // Submit to the API in the background; surface errors via toast
+      if (selectedChild) {
+        const aspectId = aspectApiMaps?.aspectIdMap[payload.aspectId] ?? payload.aspectId;
+        behaviourService.submitEntry({
+          student_id: selectedChild.id,
+          aspect_id: aspectId,
+          rating_id: payload.scale,
+          reason_chip_ids: payload.reasonIds,
+          text_note: payload.note || undefined,
+          voice_note_url: payload.voiceNoteUrl,
+        }).catch((err) => {
+          showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 4000 });
+        });
+      }
     },
-    [selectedChild?.name, showToast]
+    [selectedChild, aspectApiMaps, ratingAspects, showToast]
   );
 
   const handleVoiceNotePlaceholder = useCallback(() => {
@@ -325,6 +372,76 @@ const DashboardScreen: React.FC = () => {
     }
     return [...MISSION_GRADIENT_PENDING];
   }, [todayMissionStatus]);
+
+  // ── Language preference ──────────────────────────────────────────────────
+  // Reads the cached language preference on mount and whenever this screen
+  // comes back into focus (e.g. after a language change in Profile settings).
+  // Falls back to 'en' silently when no preference is saved.
+  useFocusEffect(
+    useCallback(() => {
+      languageService.getPreferredLanguage()
+        .then((pref) => {
+          if (pref?.code) {
+            setRatingLang(pref.code);
+            setRatingLanguageId(pref.languageId);
+          }
+        })
+        .catch(() => {});
+    }, [])
+  );
+
+  // ── Behaviour aspects ────────────────────────────────────────────────────
+  // Fetches the aspect list from the API and merges it with the local visual
+  // property table (colours, icons). Static data is the fallback when offline.
+  useEffect(() => {
+    behaviourService.getAspects(ratingLang)
+      .then(({ apiAspects, maps }) => {
+        setAspectApiMaps(maps);
+        if (apiAspects.length > 0) {
+          // Static data owns visual chrome (softBg, borderColor, accent).
+          // API owns everything else: live scores, name, iconName, iconTint (color).
+          const staticByCode = new Map(
+            DASHBOARD_RATING_ASPECTS.map((a) => [a.id, a]),
+          );
+          const merged: RatingAspectDefinition[] = apiAspects.map((a) => {
+            const s = staticByCode.get(a.id);
+            if (s) {
+              return {
+                ...s,
+                name: a.name || s.name,
+                iconName: a.iconName || s.iconName,
+                iconTint: a.color || s.iconTint,
+                accent: a.color || s.accent,
+                progressPercent: a.progressPercent,
+                dailyRatingSum: a.dailyRatingSum,
+                dailyRatingsCount: a.dailyRatingsCount,
+              };
+            }
+            // API aspect has no local visual mapping — derive colours from API color
+            return {
+              id: a.id,
+              name: a.name,
+              iconName: a.iconName,
+              softBg: `${a.color}18`,
+              borderColor: `${a.color}40`,
+              accent: a.color,
+              iconTint: a.color,
+              progressPercent: a.progressPercent,
+              dailyRatingSum: a.dailyRatingSum,
+              dailyRatingsCount: a.dailyRatingsCount,
+            };
+          });
+          console.log("merged", merged);
+          setRatingAspects(merged);
+        }
+        setAspectsLoading(false);
+      })
+      .catch(() => {
+        // API unavailable — show static aspects so the UI is never empty
+        setRatingAspects(DASHBOARD_RATING_ASPECTS);
+        setAspectsLoading(false);
+      });
+  }, [ratingLang]);
 
   useFocusEffect(
     useCallback(() => {
@@ -385,7 +502,14 @@ const DashboardScreen: React.FC = () => {
               { columnGap: aspectTileMetrics.gap, rowGap: aspectTileMetrics.gap },
             ]}
           >
-            {DASHBOARD_RATING_ASPECTS.map((aspect, index) => {
+            {aspectsLoading ? (
+              [0, 1, 2, 3, 4].map((i) => (
+                <AspectSkeletonTile
+                  key={i}
+                  width={i < 3 ? aspectTileMetrics.width3 : aspectTileMetrics.width2}
+                />
+              ))
+            ) : ratingAspects.map((aspect, index) => {
               const tileW = index < 3 ? aspectTileMetrics.width3 : aspectTileMetrics.width2;
               const sumStr = formatDailyRatingSum(aspect.dailyRatingSum);
               const sumColor =
@@ -645,7 +769,7 @@ const DashboardScreen: React.FC = () => {
         >
           <View style={styles.sectionTight}>
             <WeeklyAspectProgressChart
-              aspects={DASHBOARD_RATING_ASPECTS}
+              aspects={ratingAspects}
               series={weeklyAspectProgressSeries}
             />
           </View>
@@ -757,21 +881,12 @@ const DashboardScreen: React.FC = () => {
       <AspectRatingSheet
         visible={ratingSheetAspect !== null}
         aspect={ratingSheetAspect}
-        orderedAspects={DASHBOARD_RATING_ASPECTS}
+        orderedAspects={ratingAspects}
         onClose={closeAspectRating}
         onSave={handleAspectRatingSave}
         onSaveAndNext={handleAspectRatingSaveAndNext}
-        language={ratingLang}
-      />
-
-      <LanguagePickerSheet
-        visible={langPickerVisible}
-        selected={ratingLang}
-        onSelect={handleLanguageSelected}
-        onClose={() => {
-          setLangPickerVisible(false);
-          setPendingAspect(null);
-        }}
+        languageId={ratingLanguageId}
+        childName={selectedChild?.name}
       />
 
 
@@ -1718,6 +1833,42 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.35,
     textAlign: 'center',
+  },
+  skeletonTile: {
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+  },
+  skeletonTopAccent: {
+    height: 3,
+    width: '100%',
+    backgroundColor: colors.border,
+  },
+  skeletonIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.border,
+    marginBottom: spacing.xs,
+  },
+  skeletonNameLine: {
+    width: '72%',
+    height: 13,
+    borderRadius: borderRadius.small,
+    backgroundColor: colors.border,
+    marginBottom: spacing.xs,
+  },
+  skeletonSumLine: {
+    width: '40%',
+    height: 20,
+    borderRadius: borderRadius.small,
+    backgroundColor: colors.border,
+  },
+  skeletonPtsLine: {
+    width: '24%',
+    height: 8,
+    borderRadius: borderRadius.small,
+    backgroundColor: colors.border,
+    marginTop: 2,
   },
   familyCard: {
     marginHorizontal: spacing.lg,

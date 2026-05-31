@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,7 @@ import {
   type SupportedLanguage,
   LANGUAGE_META,
 } from '../data/aspectRatingI18n';
+import type { ApiLanguage } from '../types/language';
 
 const { height: SH } = Dimensions.get('window');
 const SHEET_CFG = { duration: 300, easing: Easing.out(Easing.cubic) };
@@ -30,14 +31,17 @@ const ALL_LANGUAGES = Object.entries(LANGUAGE_META) as [SupportedLanguage, typeo
 
 type Props = {
   visible: boolean;
-  selected: SupportedLanguage;
-  onSelect: (lang: SupportedLanguage) => void;
+  selected: string;
+  onSelect: (lang: string) => void;
   onClose: () => void;
+  /** When provided, the list is built from the API instead of the static LANGUAGE_META. */
+  languages?: ApiLanguage[];
 };
 
 export const LanguagePickerSheet = React.memo(function LanguagePickerSheet({
   visible,
   selected,
+  languages,
   onSelect,
   onClose,
 }: Props) {
@@ -47,6 +51,29 @@ export const LanguagePickerSheet = React.memo(function LanguagePickerSheet({
   useEffect(() => {
     y.value = withTiming(visible ? 0 : SH, SHEET_CFG);
   }, [visible, y]);
+
+  // When the API list is provided use it; otherwise fall back to the static LANGUAGE_META.
+  // LANGUAGE_META is always consulted for the flag emoji and native label, since the API
+  // may not return those fields.
+  const displayLanguages = useMemo(() => {
+    if (languages && languages.length > 0) {
+      return languages.map((l) => {
+        const staticMeta = LANGUAGE_META[l.language_code as SupportedLanguage];
+        return {
+          code: l.language_code,
+          flag: l.flag_image ?? '🌐',
+          label: l.name,
+          nativeLabel: l.native_name ?? staticMeta?.nativeLabel ?? l.name,
+        };
+      });
+    }
+    return ALL_LANGUAGES.map(([key, meta]) => ({
+      code: key as string,
+      flag: meta.flag,
+      label: meta.label,
+      nativeLabel: meta.nativeLabel,
+    }));
+  }, [languages]);
 
   const sheetStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: y.value }],
@@ -94,10 +121,10 @@ export const LanguagePickerSheet = React.memo(function LanguagePickerSheet({
           contentContainerStyle={styles.list}
           bounces={false}
         >
-          {ALL_LANGUAGES.map(([key, meta], index) => {
-            const isSelected = selected === key;
+          {displayLanguages.map((lang, index) => {
+            const isSelected = selected === lang.code;
             return (
-              <React.Fragment key={key}>
+              <React.Fragment key={lang.code}>
                 <Pressable
                   style={({ pressed }) => [
                     styles.row,
@@ -106,19 +133,19 @@ export const LanguagePickerSheet = React.memo(function LanguagePickerSheet({
                   ]}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    onSelect(key);
+                    onSelect(lang.code);
                     onClose();
                   }}
                   accessibilityRole="radio"
                   accessibilityState={{ checked: isSelected }}
-                  accessibilityLabel={`${meta.label} — ${meta.nativeLabel}`}
+                  accessibilityLabel={`${lang.label} — ${lang.nativeLabel}`}
                 >
-                  <Text style={styles.flag}>{meta.flag}</Text>
+                  <Text style={styles.flag}>{lang.flag}</Text>
                   <View style={styles.rowText}>
                     <Text style={[styles.langLabel, isSelected && styles.langLabelSelected]}>
-                      {meta.nativeLabel}
+                      {lang.nativeLabel}
                     </Text>
-                    <Text style={styles.langSub}>{meta.label}</Text>
+                    <Text style={styles.langSub}>{lang.label}</Text>
                   </View>
                   {isSelected ? (
                     <Icon name="check-circle" size={22} color={colors.primary} />
@@ -126,7 +153,7 @@ export const LanguagePickerSheet = React.memo(function LanguagePickerSheet({
                     <Icon name="radio-button-unchecked" size={22} color={colors.textMuted} />
                   )}
                 </Pressable>
-                {index < ALL_LANGUAGES.length - 1 ? <View style={styles.divider} /> : null}
+                {index < displayLanguages.length - 1 ? <View style={styles.divider} /> : null}
               </React.Fragment>
             );
           })}

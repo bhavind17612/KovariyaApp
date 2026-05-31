@@ -14,6 +14,7 @@ import {
   StyleSheet,
   Platform,
   AccessibilityInfo,
+  Modal,
 } from 'react-native';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -38,30 +39,51 @@ const ToastContext = createContext<ToastContextValue | undefined>(undefined);
 
 const DEFAULT_DURATION = 4500;
 
+// How long to keep the Modal mounted after content hides so the exit animation finishes.
+const EXIT_ANIMATION_MS = 250;
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const insets = useSafeAreaInsets();
+  /** Whether the toast banner is rendered inside the Modal (drives enter/exit animation). */
   const [visible, setVisible] = useState(false);
+  /** Whether the Modal itself is mounted. Lags behind `visible` by EXIT_ANIMATION_MS on close. */
+  const [modalOpen, setModalOpen] = useState(false);
   const [message, setMessage] = useState('');
   const [type, setType] = useState<ToastType>('info');
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const modalCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const clearTimer = useCallback(() => {
+  const clearHideTimer = useCallback(() => {
     if (hideTimer.current) {
       clearTimeout(hideTimer.current);
       hideTimer.current = null;
     }
   }, []);
 
+  const clearModalCloseTimer = useCallback(() => {
+    if (modalCloseTimer.current) {
+      clearTimeout(modalCloseTimer.current);
+      modalCloseTimer.current = null;
+    }
+  }, []);
+
   const hideToast = useCallback(() => {
-    clearTimer();
+    clearHideTimer();
     setVisible(false);
-  }, [clearTimer]);
+    // Delay closing the Modal so the exit animation has time to complete.
+    modalCloseTimer.current = setTimeout(() => {
+      setModalOpen(false);
+      modalCloseTimer.current = null;
+    }, EXIT_ANIMATION_MS);
+  }, [clearHideTimer]);
 
   const showToast = useCallback(
     ({ message: msg, type: t = 'info', durationMs = DEFAULT_DURATION }: ShowToastOptions) => {
-      clearTimer();
+      clearHideTimer();
+      clearModalCloseTimer(); // cancel any in-progress close so we can re-open immediately
       setMessage(msg);
       setType(t);
+      setModalOpen(true);
       setVisible(true);
 
       if (t === 'error') {
@@ -77,62 +99,78 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       }
 
       hideTimer.current = setTimeout(() => {
-        setVisible(false);
+        hideToast();
         hideTimer.current = null;
       }, durationMs);
     },
-    [clearTimer]
+    [clearHideTimer, clearModalCloseTimer, hideToast]
   );
 
-  useEffect(() => () => clearTimer(), [clearTimer]);
+  useEffect(() => () => {
+    clearHideTimer();
+    clearModalCloseTimer();
+  }, [clearHideTimer, clearModalCloseTimer]);
 
   const value = useMemo(() => ({ showToast, hideToast }), [showToast, hideToast]);
 
   return (
     <ToastContext.Provider value={value}>
       {children}
-      {visible ? (
+      {/*
+        Render inside a transparent Modal so the toast always sits in its own
+        native window layer — above any other Modal (e.g. AspectRatingSheet),
+        regardless of React view z-order.
+      */}
+      <Modal
+        visible={modalOpen}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={hideToast}
+      >
         <View pointerEvents="box-none" style={[StyleSheet.absoluteFill, styles.overlay]}>
-          <Animated.View
-            entering={FadeInUp.springify().damping(18).stiffness(220)}
-            exiting={FadeOutUp.duration(180)}
-            style={[
-              styles.banner,
-              type === 'error' && styles.bannerError,
-              type === 'success' && styles.bannerSuccess,
-              type === 'info' && styles.bannerInfo,
-              { marginTop: Math.max(insets.top, spacing.md) + spacing.sm },
-            ]}
-            accessibilityRole="alert"
-            accessibilityLiveRegion="polite"
-            pointerEvents="auto"
-          >
-            <View style={styles.iconWrap}>
-              <Icon
-                name={
-                  type === 'error'
-                    ? 'error-outline'
-                    : type === 'success'
-                      ? 'check-circle'
-                      : 'info-outline'
-                }
-                size={26}
-                color={type === 'error' ? colors.error : type === 'success' ? colors.growth : colors.ink}
-              />
-            </View>
-            <Text style={styles.message}>{message}</Text>
-            <Pressable
-              onPress={hideToast}
-              hitSlop={12}
-              style={styles.dismiss}
-              accessibilityRole="button"
-              accessibilityLabel="Dismiss message"
+          {visible ? (
+            <Animated.View
+              entering={FadeInUp.springify().damping(18).stiffness(220)}
+              exiting={FadeOutUp.duration(180)}
+              style={[
+                styles.banner,
+                type === 'error' && styles.bannerError,
+                type === 'success' && styles.bannerSuccess,
+                type === 'info' && styles.bannerInfo,
+                { marginTop: Math.max(insets.top, spacing.md) + spacing.sm },
+              ]}
+              accessibilityRole="alert"
+              accessibilityLiveRegion="polite"
+              pointerEvents="auto"
             >
-              <Icon name="close" size={22} color={colors.textSecondary} />
-            </Pressable>
-          </Animated.View>
+              <View style={styles.iconWrap}>
+                <Icon
+                  name={
+                    type === 'error'
+                      ? 'error-outline'
+                      : type === 'success'
+                        ? 'check-circle'
+                        : 'info-outline'
+                  }
+                  size={26}
+                  color={type === 'error' ? colors.error : type === 'success' ? colors.growth : colors.ink}
+                />
+              </View>
+              <Text style={styles.message}>{message}</Text>
+              <Pressable
+                onPress={hideToast}
+                hitSlop={12}
+                style={styles.dismiss}
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss message"
+              >
+                <Icon name="close" size={22} color={colors.textSecondary} />
+              </Pressable>
+            </Animated.View>
+          ) : null}
         </View>
-      ) : null}
+      </Modal>
     </ToastContext.Provider>
   );
 }

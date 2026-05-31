@@ -186,7 +186,7 @@ const REASON_CHIP_LABELS: Record<string, Record<SupportedLanguage, string>> = {
 
 // ── Public helpers ─────────────────────────────────────────────────────────────
 export function getUIStrings(lang: SupportedLanguage): RatingSheetStrings {
-  return UI_STRINGS[lang];
+  return UI_STRINGS[lang] ?? UI_STRINGS.en;
 }
 
 export function getAspectName(aspectId: string, lang: SupportedLanguage): string {

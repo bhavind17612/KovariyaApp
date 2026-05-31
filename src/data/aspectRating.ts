@@ -146,6 +146,8 @@ export const MAX_REASON_CHIPS = 2;
 export type AspectRatingPayload = {
   aspectId: string;
   scale: number;
-  reasonIds: string[];
+  reasonIds: number[];
   note: string;
+  /** URI of an uploaded voice recording, forwarded verbatim to the entries API. */
+  voiceNoteUrl?: string;
 };

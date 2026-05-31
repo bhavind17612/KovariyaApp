@@ -15,7 +15,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { AppGradientHeader, Card, AddChildModal } from '../components';
+import { AppGradientHeader, Card, AddChildModal, LanguagePickerSheet } from '../components';
+import { languageService } from '../services/languageService';
+import type { ApiLanguage } from '../types/language';
 import {
   colors,
   spacing,
@@ -33,6 +35,7 @@ import { setStatusBarStyle } from 'expo-status-bar';
 import { runOnJS } from 'react-native-worklets';
 
 type SettingId =
+  | 'language'
   | 'notifications'
   | 'privacy'
   | 'help'
@@ -62,6 +65,12 @@ const INITIAL_CHILDREN: Child[] = [
 ];
 
 const SETTINGS_ROWS: SettingRow[] = [
+  {
+    id: 'language',
+    icon: 'language',
+    title: 'Language',
+    subtitle: 'Rating sheet language preference',
+  },
   {
     id: 'notifications',
     icon: 'notifications',
@@ -178,6 +187,35 @@ const ProfileScreen: React.FC = () => {
   const [childrenList, setChildrenList] = useState<Child[]>(INITIAL_CHILDREN);
   const [addChildVisible, setAddChildVisible] = useState(false);
 
+  // ── Language preference ────────────────────────────────────────────────────
+  const [langPickerVisible, setLangPickerVisible] = useState(false);
+  const [currentLang, setCurrentLang] = useState<string>('en');
+  const [apiLanguages, setApiLanguages] = useState<ApiLanguage[]>([]);
+  const [languageCodeToIdMap, setLanguageCodeToIdMap] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    languageService.getPreferredLanguage()
+      .then((pref) => { if (pref?.code) setCurrentLang(pref.code); })
+      .catch(() => {});
+    languageService.getLanguages()
+      .then((langs) => {
+        setApiLanguages(langs);
+        const map: Record<string, number> = {};
+        for (const l of langs) map[l.language_code] = l.id;
+        setLanguageCodeToIdMap(map);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleLanguageSelected = useCallback((lang: string) => {
+    setCurrentLang(lang);
+    setLangPickerVisible(false);
+    const languageId = languageCodeToIdMap[lang];
+    if (languageId) {
+      languageService.savePreferredLanguage(languageId, lang).catch(() => {});
+    }
+  }, [languageCodeToIdMap]);
+
   const parentInfo = {
     name: user?.name || 'Wellness User',
     email: user?.email || 'user@kovariya.com',
@@ -193,17 +231,11 @@ const ProfileScreen: React.FC = () => {
   const navigation = useNavigation<any>();
 
   const handleSettingPress = useCallback((id: SettingId) => {
-
-    // const routes: Record<SettingId, string> = {
-    //   notifications: 'NotificationSettings',
-    //   privacy: 'PrivacySecurity',
-    //   help: 'HelpSupport',
-    //   feedback: 'SendFeedback',
-    //   about: 'About',
-    // };
+    if (id === 'language') {
+      setLangPickerVisible(true);
+      return;
+    }
     Alert.alert('opened ', id);
-    // navigation.navigate(routes[id]);
-    // }, [navigation]);
   }, []);
 
   const onChildAdded = useCallback((child: Child) => {
@@ -384,7 +416,11 @@ const ProfileScreen: React.FC = () => {
                   </View>
                   <View style={styles.settingText}>
                     <Text style={styles.settingTitle}>{option.title}</Text>
-                    <Text style={styles.settingSubtitle}>{option.subtitle}</Text>
+                    <Text style={styles.settingSubtitle}>
+                      {option.id === 'language'
+                        ? (apiLanguages.find((l) => l.language_code === currentLang)?.name ?? currentLang.toUpperCase())
+                        : option.subtitle}
+                    </Text>
                   </View>
                 </View>
                 <Icon name="chevron-right" size={22} color={colors.textMuted} />
@@ -405,6 +441,14 @@ const ProfileScreen: React.FC = () => {
         visible={addChildVisible}
         onClose={() => setAddChildVisible(false)}
         onSubmit={onChildAdded}
+      />
+
+      <LanguagePickerSheet
+        visible={langPickerVisible}
+        selected={currentLang as any}
+        languages={apiLanguages}
+        onSelect={(lang) => handleLanguageSelected(lang)}
+        onClose={() => setLangPickerVisible(false)}
       />
     </SafeAreaView>
   );
