@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -273,6 +273,67 @@ const DashboardScreen: React.FC = () => {
     setTodayMissionByChildId((prev) => ({ ...prev, [selectedChild?.id ?? '']: status }));
   }, [selectedChild?.id]);
 
+  // ── Behaviour aspects ────────────────────────────────────────────────────
+  // Fetches the aspect list from the API and merges it with the local visual
+  // property table (colours, icons). Static data is the fallback when offline.
+  //
+  // Extracted as a stable callback so it can be called both on mount/language
+  // change AND imperatively after a rating is saved.
+  const fetchAspects = useCallback(() => {
+    behaviourService.getAspects(ratingLang, selectedChild?.id)
+      .then(({ apiAspects, maps }) => {
+        setAspectApiMaps(maps);
+        if (apiAspects.length > 0) {
+          // Static data owns visual chrome (softBg, borderColor, accent).
+          // API owns everything else: live scores, name, iconName, iconTint (color).
+          const staticByCode = new Map(
+            DASHBOARD_RATING_ASPECTS.map((a) => [a.id, a]),
+          );
+          const merged: RatingAspectDefinition[] = apiAspects.map((a) => {
+            const s = staticByCode.get(a.id);
+            if (s) {
+              return {
+                ...s,
+                name: a.name || s.name,
+                iconName: a.iconName || s.iconName,
+                iconTint: a.color || s.iconTint,
+                accent: a.color || s.accent,
+                progressPercent: a.progressPercent,
+                dailyRatingSum: a.dailyRatingSum,
+                dailyRatingsCount: a.dailyRatingsCount,
+              };
+            }
+            // API aspect has no local visual mapping — derive colours from API color
+            return {
+              id: a.id,
+              name: a.name,
+              iconName: a.iconName,
+              softBg: `${a.color}18`,
+              borderColor: `${a.color}40`,
+              accent: a.color,
+              iconTint: a.color,
+              progressPercent: a.progressPercent,
+              dailyRatingSum: a.dailyRatingSum,
+              dailyRatingsCount: a.dailyRatingsCount,
+            };
+          });
+          console.log('merged', merged);
+          setRatingAspects(merged);
+        }
+        setAspectsLoading(false);
+      })
+      .catch(() => {
+        // API unavailable — show static aspects so the UI is never empty
+        setRatingAspects(DASHBOARD_RATING_ASPECTS);
+        setAspectsLoading(false);
+      });
+  }, [ratingLang]);
+
+  // Initial load + re-fetch whenever the language preference changes.
+  useEffect(() => {
+    fetchAspects();
+  }, [fetchAspects]);
+
   const openAspectRating = useCallback((aspect: RatingAspectDefinition) => {
     setRatingSheetAspect(aspect);
   }, []);
@@ -283,17 +344,17 @@ const DashboardScreen: React.FC = () => {
     (payload: AspectRatingPayload) => {
       // Submit to the API in the background; surface errors via toast
       // (success toast is shown inside AspectRatingSheet while the modal is still visible)
-      console.log('selectedChild', selectedChild)
+      console.log('selectedChild', selectedChild);
       if (selectedChild) {
         const aspectId = aspectApiMaps?.aspectIdMap[payload.aspectId] ?? payload.aspectId;
-        console.log("entry of respsect",{
+        console.log('entry of respsect', {
           student_id: selectedChild.id,
           aspect_id: aspectId,
           rating_id: payload.scale,
           reason_chip_ids: payload.reasonIds,
           text_note: payload.note || undefined,
           voice_note_url: payload.voiceNoteUrl,
-        })
+        });
         behaviourService.submitEntry({
           student_id: selectedChild.id,
           aspect_id: aspectId,
@@ -301,12 +362,18 @@ const DashboardScreen: React.FC = () => {
           reason_chip_ids: payload.reasonIds,
           text_note: payload.note || undefined,
           voice_note_url: payload.voiceNoteUrl,
-        }).catch((err) => {
-          showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 4000 });
-        });
+        })
+          .then(() => {
+            // Call directly here — the modal may already be closed (last aspect),
+            // so a ref+effect approach would miss it due to the timing race.
+            fetchAspects();
+          })
+          .catch((err) => {
+            showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 4000 });
+          });
       }
     },
-    [selectedChild, aspectApiMaps, showToast]
+    [selectedChild, aspectApiMaps, fetchAspects, showToast]
   );
 
   const handleAspectRatingSaveAndNext = useCallback(
@@ -331,12 +398,19 @@ const DashboardScreen: React.FC = () => {
           reason_chip_ids: payload.reasonIds,
           text_note: payload.note || undefined,
           voice_note_url: payload.voiceNoteUrl,
-        }).catch((err) => {
-          showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 4000 });
-        });
+        })
+          .then(() => {
+            // Call directly here — works whether the modal has already moved to
+            // the next aspect or has been closed (last-aspect race condition).
+            fetchAspects();
+          })
+          .catch((err) => {
+            showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 4000 });
+          });
       }
     },
-    [selectedChild, aspectApiMaps, ratingAspects, showToast]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedChild, aspectApiMaps, fetchAspects, ratingAspects, showToast]
   );
 
   const handleVoiceNotePlaceholder = useCallback(() => {
@@ -386,62 +460,10 @@ const DashboardScreen: React.FC = () => {
             setRatingLanguageId(pref.languageId);
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     }, [])
   );
 
-  // ── Behaviour aspects ────────────────────────────────────────────────────
-  // Fetches the aspect list from the API and merges it with the local visual
-  // property table (colours, icons). Static data is the fallback when offline.
-  useEffect(() => {
-    behaviourService.getAspects(ratingLang)
-      .then(({ apiAspects, maps }) => {
-        setAspectApiMaps(maps);
-        if (apiAspects.length > 0) {
-          // Static data owns visual chrome (softBg, borderColor, accent).
-          // API owns everything else: live scores, name, iconName, iconTint (color).
-          const staticByCode = new Map(
-            DASHBOARD_RATING_ASPECTS.map((a) => [a.id, a]),
-          );
-          const merged: RatingAspectDefinition[] = apiAspects.map((a) => {
-            const s = staticByCode.get(a.id);
-            if (s) {
-              return {
-                ...s,
-                name: a.name || s.name,
-                iconName: a.iconName || s.iconName,
-                iconTint: a.color || s.iconTint,
-                accent: a.color || s.accent,
-                progressPercent: a.progressPercent,
-                dailyRatingSum: a.dailyRatingSum,
-                dailyRatingsCount: a.dailyRatingsCount,
-              };
-            }
-            // API aspect has no local visual mapping — derive colours from API color
-            return {
-              id: a.id,
-              name: a.name,
-              iconName: a.iconName,
-              softBg: `${a.color}18`,
-              borderColor: `${a.color}40`,
-              accent: a.color,
-              iconTint: a.color,
-              progressPercent: a.progressPercent,
-              dailyRatingSum: a.dailyRatingSum,
-              dailyRatingsCount: a.dailyRatingsCount,
-            };
-          });
-          console.log("merged", merged);
-          setRatingAspects(merged);
-        }
-        setAspectsLoading(false);
-      })
-      .catch(() => {
-        // API unavailable — show static aspects so the UI is never empty
-        setRatingAspects(DASHBOARD_RATING_ASPECTS);
-        setAspectsLoading(false);
-      });
-  }, [ratingLang]);
 
   useFocusEffect(
     useCallback(() => {

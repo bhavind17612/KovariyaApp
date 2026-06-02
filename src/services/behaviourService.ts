@@ -22,13 +22,17 @@ class BehaviourService {
    *  - `apiAspects` — parsed aspect list for the dashboard to merge with visual props
    *  - `maps`       — ID lookup tables for POST /behaviour/entries submission
    */
-  async getAspects(language?: string): Promise<{
+  async getAspects(language?: string, selectedChild?: string): Promise<{
     apiAspects: ApiAspect[];
     maps: AspectApiIdMaps;
   }> {
     const params: Record<string, string> = {};
     if (language && language !== 'en') {
       params.lang = language;
+    }
+    console.log('child id, selectedChildId', selectedChild)
+    if (selectedChild) {
+      params.student_id = selectedChild;
     }
 
     const response = await api.get<ApiAspectsResponse>(ENDPOINTS.BEHAVIOUR.ASPECTS, {
@@ -55,24 +59,25 @@ class BehaviourService {
   }
 
   /** Fetches reason chips for a single aspect from GET /aspects/:slug/chips. */
-  async getAspectChips(slug: string): Promise<AspectReasonChip[]> {
+  async getAspectChips(slug: string, languageId?: number): Promise<AspectReasonChip[]> {
     const response = await api.get<AspectReasonChipsResponse>(
       ENDPOINTS.BEHAVIOUR.ASPECT_CHIPS(slug),
+      { params: { language_id: languageId } },
     );
     const payload = response.data.data;
     const chips = Array.isArray(payload)
       ? payload
       : [
-          ...(Array.isArray(payload?.chips) ? payload.chips : []),
-          ...(Array.isArray(payload?.reason_chips) ? payload.reason_chips : []),
-          ...(Array.isArray(payload?.positive)
-            ? payload.positive.map((chip) => ({ ...chip, sentiment: 'positive' as const }))
-            : []),
-          ...(Array.isArray(payload?.negative)
-            ? payload.negative.map((chip) => ({ ...chip, sentiment: 'negative' as const }))
-            : []),
-        ];
-        console.log('chips =', chips);
+        ...(Array.isArray(payload?.chips) ? payload.chips : []),
+        ...(Array.isArray(payload?.reason_chips) ? payload.reason_chips : []),
+        ...(Array.isArray(payload?.positive)
+          ? payload.positive.map((chip) => ({ ...chip, sentiment: 'positive' as const }))
+          : []),
+        ...(Array.isArray(payload?.negative)
+          ? payload.negative.map((chip) => ({ ...chip, sentiment: 'negative' as const }))
+          : []),
+      ];
+    console.log('chips =', chips);
     return chips
       .filter((chip): chip is AspectReasonChip =>
         typeof chip === 'object' &&
@@ -84,8 +89,55 @@ class BehaviourService {
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
   }
 
-  /** Submits a single behaviour log entry to POST /behaviour/entries. */
+  /**
+   * Submits a single behaviour log entry to POST /behaviour/entries.
+   *
+   * When `voice_note_url` is a local `file://` URI (recorded on-device), the
+   * request is sent as multipart/form-data so the server receives the actual
+   * audio binary. For entries without a voice note, regular JSON is used.
+   */
   async submitEntry(request: BehaviourEntryRequest): Promise<BehaviourEntryResponse> {
+    const voiceUri = request.voice_note_url;
+    const isLocalFile = typeof voiceUri === 'string' && voiceUri.startsWith('file://');
+
+    if (isLocalFile) {
+      // Build multipart/form-data so the server receives the actual file binary.
+      const form = new FormData();
+      form.append('student_id', String(request.student_id));
+      form.append('aspect_id', String(request.aspect_id));
+      form.append('rating_id', String(request.rating_id));
+      // reason_chip_ids is an array — append each element individually.
+      request.reason_chip_ids.forEach((id) => {
+        form.append('reason_chip_ids[]', String(id));
+      });
+      if (request.text_note) {
+        form.append('text_note', request.text_note);
+      }
+      // Derive the filename and MIME type from the URI.
+      const fileName = voiceUri.split('/').pop() ?? 'voice_note.m4a';
+      const ext = fileName.split('.').pop()?.toLowerCase() ?? 'm4a';
+      const mimeMap: Record<string, string> = {
+        m4a: 'audio/mp4',
+        aac: 'audio/aac',
+        mp3: 'audio/mpeg',
+        wav: 'audio/wav',
+        caf: 'audio/x-caf',
+        ogg: 'audio/ogg',
+        webm: 'audio/webm',
+      };
+      const mimeType = mimeMap[ext] ?? 'audio/mp4';
+      // React Native's FormData accepts { uri, name, type } objects for files.
+      form.append('voice_note', { uri: voiceUri, name: fileName, type: mimeType } as unknown as Blob);
+
+      const response = await api.post<BehaviourEntryResponse>(
+        ENDPOINTS.BEHAVIOUR.ENTRIES,
+        form,
+        { headers: { 'Content-Type': 'multipart/form-data' } },
+      );
+      return response.data.data;
+    }
+
+    // No local file — send as regular JSON.
     const response = await api.post<BehaviourEntryResponse>(
       ENDPOINTS.BEHAVIOUR.ENTRIES,
       request,

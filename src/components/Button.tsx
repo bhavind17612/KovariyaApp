@@ -114,12 +114,12 @@ export const Button = React.memo(function Button({
     let variantStyle: ViewStyle;
     switch (variant) {
       case 'secondary':
-        variantStyle = { backgroundColor: colors.mintSoft, borderWidth:1.5 };
+        variantStyle = { backgroundColor: colors.mintSoft, borderWidth: 1.5 };
         break;
       case 'outline':
         variantStyle = {
           backgroundColor: colors.surface,
-          borderWidth: 1.5,
+          borderWidth: 1,
           borderColor: colors.primary,
         };
         break;
@@ -229,7 +229,7 @@ export const Button = React.memo(function Button({
             pointerEvents={loading ? 'none' : 'auto'}
           >
             {icon ? <View style={styles.icon}>{icon}</View> : null}
-            <Text style={[getTextStyle(), textStyle]}>{title}</Text>
+            <Text numberOfLines={1} style={[getTextStyle(), textStyle]}>{title}</Text>
           </Animated.View>
 
           <Animated.View

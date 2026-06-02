@@ -215,7 +215,7 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
     }
 
     let ignore = false;
-    behaviourService.getAspectChips(aspectId)
+    behaviourService.getAspectChips(aspectId, languageId)
       .then((chips) => {
         if (ignore) {
           return;
@@ -256,7 +256,7 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
           });
           return prevByAspect;
         }
-        console.log("prev",[...prev, id])
+        console.log("prev", [...prev, id])
         return {
           ...prevByAspect,
           [aspectId]: [...prev, id],
@@ -306,7 +306,7 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
   const handleSaveEntry = useCallback(() => {
     Keyboard.dismiss();
     const payload = buildPayload();
-    console.log('payload ',payload);
+    console.log('payload ', payload);
     if (!payload) {
       return;
     }
@@ -574,14 +574,14 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
 
                         return scaleItems.map((opt) => {
                           const neg = opt.score < 0;
-                          const selected = scale === opt.score;
+                          const selected = scale === opt.id;
                           const ripple = neg
                             ? { color: 'rgba(220, 38, 38, 0.18)', borderless: false }
                             : { color: 'rgba(22, 163, 74, 0.18)', borderless: false };
                           return (
                             <Pressable
                               key={opt.score}
-                              onPress={() => setScale(opt.score)}
+                              onPress={() => setScale(opt.id)}
                               android_ripple={ripple}
                               style={({ pressed }) => [
                                 styles.scaleBtn,
