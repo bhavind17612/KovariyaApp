@@ -3,6 +3,8 @@ import { ENDPOINTS } from '../api/endpoints';
 import type {
   ApiAspect,
   ApiAspectsResponse,
+  AspectReasonChip,
+  AspectReasonChipsResponse,
   AspectApiIdMaps,
   BehaviourEntryRequest,
   BehaviourEntryResponse,
@@ -50,6 +52,36 @@ class BehaviourService {
     }
 
     return { apiAspects, maps };
+  }
+
+  /** Fetches reason chips for a single aspect from GET /aspects/:slug/chips. */
+  async getAspectChips(slug: string): Promise<AspectReasonChip[]> {
+    const response = await api.get<AspectReasonChipsResponse>(
+      ENDPOINTS.BEHAVIOUR.ASPECT_CHIPS(slug),
+    );
+    const payload = response.data.data;
+    const chips = Array.isArray(payload)
+      ? payload
+      : [
+          ...(Array.isArray(payload?.chips) ? payload.chips : []),
+          ...(Array.isArray(payload?.reason_chips) ? payload.reason_chips : []),
+          ...(Array.isArray(payload?.positive)
+            ? payload.positive.map((chip) => ({ ...chip, sentiment: 'positive' as const }))
+            : []),
+          ...(Array.isArray(payload?.negative)
+            ? payload.negative.map((chip) => ({ ...chip, sentiment: 'negative' as const }))
+            : []),
+        ];
+        console.log('chips =', chips);
+    return chips
+      .filter((chip): chip is AspectReasonChip =>
+        typeof chip === 'object' &&
+        chip !== null &&
+        typeof chip.id === 'number' &&
+        typeof chip.chip_text === 'string' &&
+        (chip.sentiment === 'positive' || chip.sentiment === 'negative')
+      )
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
   }
 
   /** Submits a single behaviour log entry to POST /behaviour/entries. */

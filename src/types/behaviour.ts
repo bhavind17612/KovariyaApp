@@ -22,6 +22,25 @@ export interface ApiAspectsResponse {
   language_id: number;
 }
 
+/** One reason chip as returned by GET /aspects/:slug/chips. */
+export interface AspectReasonChip {
+  id: number;
+  chip_text: string;
+  sentiment: 'positive' | 'negative';
+  sort_order?: number;
+  [key: string]: unknown;
+}
+
+export type AspectReasonChipsResponse =
+  | AspectReasonChip[]
+  | {
+      aspect_id?: number;
+      chips?: AspectReasonChip[];
+      reason_chips?: AspectReasonChip[];
+      positive?: AspectReasonChip[];
+      negative?: AspectReasonChip[];
+    };
+
 /** POST /behaviour/entries request body */
 export interface BehaviourEntryRequest {
   student_id: string;

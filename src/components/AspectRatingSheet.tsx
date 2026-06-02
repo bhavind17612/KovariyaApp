@@ -28,14 +28,14 @@ import {
 import {
   type RatingAspectDefinition,
   RATING_SCALE_OPTIONS,
-  REASON_CHIPS_POSITIVE,
-  REASON_CHIPS_NEGATIVE,
   MAX_REASON_CHIPS,
   type AspectRatingPayload,
 } from '../data/aspectRating';
 import { useToast } from '../context/ToastContext';
 
 import { translationService } from '../services/translationService';
+import { behaviourService } from '../services/behaviourService';
+import type { AspectReasonChip } from '../types/behaviour';
 import type { RatingSheetTranslationsApiData } from '../types/translation';
 
 const NEXT_STEP_TOOLTIP_MS = 4000;
@@ -175,48 +175,78 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
     };
   }, [apiTranslations, EN_FALLBACK]);
 
-  const getScaleLabelFromApi = useCallback((value: number): string => {
-    const raw = apiTranslations?.scale_labels?.[String(value)];
-    console.log('score label', raw)
-    if (raw == null) return String(value);
-    if (typeof raw === 'string') return raw;
-    // API returned a structured object like {id, score, title, sort_order}
-    if (typeof raw === 'object' && 'title' in raw) return String(raw.title);
-    return String(value);
-  }, [apiTranslations]);
-
-  const getReasonChipLabelFromApi = useCallback((chipId: string): string => {
-    const raw = apiTranslations?.reason_chip_labels?.[chipId];
-    if (raw == null) return chipId;
-    if (typeof raw === 'string') return raw;
-    // API returned a structured object — extract title
-    if (typeof raw === 'object' && 'title' in raw) return String(raw.title);
-    return chipId;
-  }, [apiTranslations]);
   const [scale, setScale] = useState<number | null>(null);
-  const [reasonIds, setReasonIds] = useState<number[]>([]);
+  const [reasonIdsByAspect, setReasonIdsByAspect] = useState<Record<string, number[]>>({});
+  const [chipsByAspect, setChipsByAspect] = useState<Record<string, AspectReasonChip[]>>({});
   const [note, setNote] = useState('');
   const [voiceResult, setVoiceResult] = useState<VoiceRecordingResult | null>(null);
   const [voiceModalVisible, setVoiceModalVisible] = useState(false);
   const scrollRef = useRef<ScrollView | null>(null);
 
   const hasVoiceNote = voiceResult !== null;
+  const aspectId = aspect?.id;
+  const reasonIds = useMemo(
+    () => (aspectId ? reasonIdsByAspect[aspectId] ?? [] : []),
+    [aspectId, reasonIdsByAspect]
+  );
+  const aspectChips = useMemo(
+    () => (aspectId ? chipsByAspect[aspectId] ?? [] : []),
+    [aspectId, chipsByAspect]
+  );
 
   useEffect(() => {
-    if (visible && aspect) {
+    if (visible && aspectId) {
       setScale(null);
-      setReasonIds([]);
       setNote('');
       setVoiceResult(null);
     }
-  }, [visible, aspect?.id]);
+  }, [visible, aspectId]);
+
+  useEffect(() => {
+    if (!visible) {
+      setReasonIdsByAspect({});
+      setChipsByAspect({});
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible || !aspectId) {
+      return;
+    }
+
+    let ignore = false;
+    behaviourService.getAspectChips(aspectId)
+      .then((chips) => {
+        if (ignore) {
+          return;
+        }
+        setChipsByAspect((prev) => ({ ...prev, [aspectId]: chips }));
+      })
+      .catch(() => {
+        if (ignore) {
+          return;
+        }
+        setChipsByAspect((prev) => ({ ...prev, [aspectId]: [] }));
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [visible, aspectId]);
 
   const toggleReason = useCallback(
     (id: number) => {
       console.log("selected chips", id);
-      setReasonIds((prev) => {
+      if (!aspectId) {
+        return;
+      }
+      setReasonIdsByAspect((prevByAspect) => {
+        const prev = prevByAspect[aspectId] ?? [];
         if (prev.includes(id)) {
-          return prev.filter((x) => x !== id);
+          return {
+            ...prevByAspect,
+            [aspectId]: prev.filter((x) => x !== id),
+          };
         }
         if (prev.length >= MAX_REASON_CHIPS) {
           showToast({
@@ -224,21 +254,29 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
             message: uiStrings.toastMaxReasons,
             durationMs: 3200,
           });
-          return prev;
+          return prevByAspect;
         }
         console.log("prev",[...prev, id])
-        return [...prev, id];
+        return {
+          ...prevByAspect,
+          [aspectId]: [...prev, id],
+        };
       });
     },
-    [showToast, uiStrings]
+    [aspectId, showToast, uiStrings]
   );
 
   const resetForm = useCallback(() => {
     setScale(null);
-    setReasonIds([]);
+    setReasonIdsByAspect((prev) => {
+      if (!aspectId) {
+        return prev;
+      }
+      return { ...prev, [aspectId]: [] };
+    });
     setNote('');
     setVoiceResult(null);
-  }, []);
+  }, [aspectId]);
   const isFinalAspect = useMemo(() => {
     if (!aspect || !orderedAspects?.length) {
       return false;
@@ -361,13 +399,13 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
         btnGuideTimerRef.current = null;
       }
     };
-  }, [visible, isFirstAspect, showSaveAndNext]);
+  }, [visible, isFirstAspect, showSaveAndNext, btnGuideOpacity]);
 
   const prevAspectIdForTooltipRef = useRef<string | null>(null);
   const tooltipHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveNextAnchorRef = useRef<View | null>(null);
   const [nextStepTooltipLabel, setNextStepTooltipLabel] = useState<string | null>(null);
-  const [nextStepPopoverPos, setNextStepPopoverPos] = useState<{
+  const [_nextStepPopoverPos, setNextStepPopoverPos] = useState<{
     top: number;
     left: number;
     width: number;
@@ -398,17 +436,17 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
       }
       return;
     }
-    if (!aspect) {
+    if (!aspectId) {
       return;
     }
 
     const prevId = prevAspectIdForTooltipRef.current;
-    prevAspectIdForTooltipRef.current = aspect.id;
+    prevAspectIdForTooltipRef.current = aspectId;
 
     if (prevId === null) {
       return;
     }
-    if (prevId === aspect.id) {
+    if (prevId === aspectId) {
       return;
     }
 
@@ -423,7 +461,7 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
         tooltipHideTimerRef.current = null;
       }, NEXT_STEP_TOOLTIP_MS);
     }
-  }, [visible, aspect?.id, nextAspect?.name]);
+  }, [visible, aspectId, nextAspect?.name]);
 
   useEffect(() => {
     if (!nextStepTooltipLabel || !showSaveAndNext) {
@@ -434,7 +472,7 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
       measureNextStepPopover();
     });
     return () => cancelAnimationFrame(id);
-  }, [nextStepTooltipLabel, showSaveAndNext, measureNextStepPopover, aspect?.id]);
+  }, [nextStepTooltipLabel, showSaveAndNext, measureNextStepPopover, aspectId]);
 
   const title = useMemo(
     () => (aspect ? `${aspect.name} · ${uiStrings.howWasBehaviour}` : ''),
@@ -586,21 +624,12 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
                     </Text>
                     <Text style={styles.reasonHint}>{uiStrings.reasonHintPositive}</Text>
                     {(() => {
-                      // Parse all chip entries from the API, filtering to only proper objects.
-                      type ChipEntry = import('../types/translation').ReasonChipLabelEntry & { chipKey: number };
-                      const apiChips: ChipEntry[] = apiTranslations?.reason_chip_labels
-                        ? Object.entries(apiTranslations.reason_chip_labels)
-                          .filter((entry): entry is [string, import('../types/translation').ReasonChipLabelEntry] => {
-                            const val = entry[1];
-                            return typeof val === 'object' && val !== null && 'chip_text' in val && 'sentiment' in val;
-                          })
-                          .map(([key, val]) => ({ ...val, chipKey: val.id }))
-                          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-                        : [
-                          ...REASON_CHIPS_POSITIVE.map((c) => ({ id: 0, chipKey: c.id, chip_text: c.label, sentiment: 'positive' as const, sort_order: 0 })),
-                          ...REASON_CHIPS_NEGATIVE.map((c) => ({ id: 0, chipKey: c.id, chip_text: c.label, sentiment: 'negative' as const, sort_order: 0 })),
-                        ];
-
+                      type ChipEntry = AspectReasonChip & { chipKey: number };
+                      const apiChips: ChipEntry[] = aspectChips.map((chip) => ({
+                        ...chip,
+                        chipKey: chip.id,
+                      }));
+                      console.log('apischips ', aspectChips);
                       const positiveChips = apiChips.filter((c) => c.sentiment === 'positive');
                       const negativeChips = apiChips.filter((c) => c.sentiment === 'negative');
 

@@ -65,6 +65,7 @@ export const ENDPOINTS = {
   BEHAVIOUR: {
     /** GET — returns aspects with their ratings and reason chips */
     ASPECTS: '/api/v1/behaviour/aspects',
+    ASPECT_CHIPS: (slug: string) => `/api/v1/behaviour/aspects/${encodeURIComponent(slug)}/chips`,
     /** POST — submit a behaviour log entry */
     ENTRIES: '/api/v1/behaviour/entries',
   },
