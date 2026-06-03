@@ -128,7 +128,7 @@ class BehaviourService {
       const mimeType = mimeMap[ext] ?? 'audio/mp4';
       // React Native's FormData accepts { uri, name, type } objects for files.
       form.append('voice_note', { uri: voiceUri, name: fileName, type: mimeType } as unknown as Blob);
-
+      console.log('form ', form)
       const response = await api.post<BehaviourEntryResponse>(
         ENDPOINTS.BEHAVIOUR.ENTRIES,
         form,
