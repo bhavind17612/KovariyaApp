@@ -1,5 +1,5 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { Platform, Pressable, ScrollView, StatusBar as RNStatusBar, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StatusBar as RNStatusBar, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,7 +23,6 @@ import {
 	missionTypeChipStyle,
 } from '../theme/missionPillStyles';
 import {
-	MENTOR_ASSIGNED_MISSIONS,
 	formatDailyStatusLabel,
 	formatLifecycleStatusLabel,
 	formatMissionTypeLabel,
@@ -34,6 +33,7 @@ import {
 	type MentorMission,
 } from '../data/mentorMissions';
 import { formatAppDate } from '../utils/dateFormat';
+import { missionsService } from '../services/missionsService';
 
 type Props = {
 	navigation: {
@@ -61,9 +61,19 @@ export default function MissionsScreen({ navigation }: Props) {
 		}, [])
 	);
 	const insets = useSafeAreaInsets();
-	const [missionState, setMissionState] = useState<Record<string, MentorMission>>(Object.fromEntries(
-		MENTOR_ASSIGNED_MISSIONS.map((m) => [m.id, m])
-	));
+	const [missionState, setMissionState] = useState<Record<string, MentorMission>>({});
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState(false);
+
+	useEffect(() => {
+		missionsService.getMissions()
+			.then((missions) => {
+				setMissionState(Object.fromEntries(missions.map((m) => [m.id, m])));
+				setError(false);
+			})
+			.catch(() => setError(true))
+			.finally(() => setLoading(false));
+	}, []);
 
 	const missions = useMemo(() => {
 		const list = Object.values(missionState);
@@ -144,7 +154,32 @@ export default function MissionsScreen({ navigation }: Props) {
 		<SafeAreaView style={styles.root} edges={['left', 'right', 'bottom']}>
 			<AppGradientHeader title="Missions" subtitle="Assigned by your mentor" />
 
-			<ScrollView
+			{loading ? (
+				<View style={styles.centeredState}>
+					<ActivityIndicator size="large" color={colors.primary} />
+				</View>
+			) : error ? (
+				<View style={styles.centeredState}>
+					<Text style={styles.errorText}>Could not load missions. Please check your connection.</Text>
+					<Pressable
+						onPress={() => {
+							setLoading(true);
+							setError(false);
+							missionsService.getMissions()
+								.then((m) => {
+									setMissionState(Object.fromEntries(m.map((x) => [x.id, x])));
+									setError(false);
+								})
+								.catch(() => setError(true))
+								.finally(() => setLoading(false));
+						}}
+						style={({ pressed }) => [styles.retryBtn, pressed && styles.retryBtnPressed]}
+					>
+						<Text style={styles.retryBtnText}>Retry</Text>
+					</Pressable>
+				</View>
+			) : (
+				<ScrollView
 				style={styles.scroll}
 				contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPad }]}
 				showsVerticalScrollIndicator={false}
@@ -288,6 +323,7 @@ export default function MissionsScreen({ navigation }: Props) {
 					);
 				})}
 			</ScrollView>
+		)}
 		</SafeAreaView>
 	);
 }
@@ -296,6 +332,33 @@ const styles = StyleSheet.create({
 	root: {
 		flex: 1,
 		backgroundColor: colors.background,
+	},
+	centeredState: {
+		flex: 1,
+		alignItems: 'center',
+		justifyContent: 'center',
+		padding: spacing.lg,
+		gap: spacing.md,
+	},
+	errorText: {
+		...textStyles.bodyMedium,
+		color: colors.textSecondary,
+		textAlign: 'center',
+		lineHeight: 22,
+	},
+	retryBtn: {
+		paddingVertical: spacing.sm,
+		paddingHorizontal: spacing.lg,
+		borderRadius: borderRadius.full,
+		backgroundColor: colors.primary,
+	},
+	retryBtnPressed: {
+		opacity: 0.82,
+	},
+	retryBtnText: {
+		...textStyles.bodyMedium,
+		fontWeight: '700',
+		color: colors.surface,
 	},
 	scroll: {
 		flex: 1,
