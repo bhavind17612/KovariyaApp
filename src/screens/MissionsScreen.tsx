@@ -6,7 +6,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { setStatusBarStyle } from 'expo-status-bar';
 import { useFocusEffect } from '@react-navigation/native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { AppGradientHeader, Button } from '../components';
+import { AppGradientHeader, AppRefreshControl, Button } from '../components';
+import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { useToast } from '../context/ToastContext';
 import {
 	getFloatingTabBarBottomPadding,
@@ -65,15 +66,23 @@ export default function MissionsScreen({ navigation }: Props) {
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(false);
 
-	useEffect(() => {
-		missionsService.getMissions()
-			.then((missions) => {
-				setMissionState(Object.fromEntries(missions.map((m) => [m.id, m])));
-				setError(false);
-			})
-			.catch(() => setError(true))
-			.finally(() => setLoading(false));
+	const loadMissions = useCallback(async () => {
+		try {
+			const missions = await missionsService.getMissions();
+			setMissionState(Object.fromEntries(missions.map((m) => [m.id, m])));
+			setError(false);
+		} catch {
+			setError(true);
+		} finally {
+			setLoading(false);
+		}
 	}, []);
+
+	useEffect(() => {
+		loadMissions();
+	}, [loadMissions]);
+
+	const { refreshing, onRefresh } = usePullToRefresh(loadMissions);
 
 	const missions = useMemo(() => {
 		const list = Object.values(missionState);
@@ -183,6 +192,7 @@ export default function MissionsScreen({ navigation }: Props) {
 				style={styles.scroll}
 				contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPad }]}
 				showsVerticalScrollIndicator={false}
+				refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
 			>
 				{missions.map((mission, index) => {
 					const typeVisual = missionTypeChipStyle(mission.missionType);
@@ -289,7 +299,7 @@ export default function MissionsScreen({ navigation }: Props) {
 											variant="primary"
 											icon={<Icon name="check-circle" size={18} color={colors.surface} />}
 											onPress={() => markDone(mission)}
-											style={StyleSheet.flatten([
+											btnStyle={StyleSheet.flatten([
 												styles.missionButtonDone,
 												{
 													backgroundColor: colors.growth,
@@ -306,7 +316,7 @@ export default function MissionsScreen({ navigation }: Props) {
 											variant="primary"
 											icon={<Icon name="highlight-off" size={18} color={colors.surface} />}
 											onPress={() => markMissed(mission)}
-											style={StyleSheet.flatten([
+											btnStyle={StyleSheet.flatten([
 												styles.missionButtonMissed,
 												{
 													backgroundColor: colors.error,

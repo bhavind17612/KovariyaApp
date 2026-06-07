@@ -35,10 +35,36 @@ export const ENDPOINTS = {
     ONBOARDING: '/api/v1/students/onboarding',
   },
 
+  GOALS: {
+    /** POST — create a new goal */
+    CREATE: '/api/v1/goals',
+    /** GET — all goals for a parent, by parent UUID */
+    BY_PARENT: (parentUuid: string) => `/api/v1/goals/parent/${parentUuid}`,
+    /** GET — a single goal by its UUID */
+    DETAIL: (uuid: string) => `/api/v1/goals/${uuid}`,
+  },
+
   MISSIONS: {
     LIST: '/api/v1/missions',
     DETAIL: (id: string) => `/api/v1/missions/${id}`,
     SUBMIT: '/api/v1/missions/submit',
+  },
+
+  QUIZZES: {
+    /** GET ?student_id=<uuid> — quizzes for a child */
+    LIST: '/api/v1/quizzes/parent/list',
+    /** GET ?student_id=<uuid> — quiz detail with questions (no answers) */
+    DETAIL: (quizUuid: string) => `/api/v1/quizzes/parent/${quizUuid}`,
+    /** POST ?student_id=<uuid> — start or resume an attempt */
+    START: (quizUuid: string) => `/api/v1/quizzes/parent/${quizUuid}/start`,
+    /** POST — save a single answer for an attempt */
+    ANSWER: (attemptUuid: string) => `/api/v1/quizzes/parent/attempts/${attemptUuid}/answer`,
+    /** POST — submit an attempt (auto-scores) */
+    SUBMIT: (attemptUuid: string) => `/api/v1/quizzes/parent/attempts/${attemptUuid}/submit`,
+    /** GET — result summary for a submitted attempt */
+    RESULT: (attemptUuid: string) => `/api/v1/quizzes/parent/attempts/${attemptUuid}/result`,
+    /** GET — full review with correct answers + explanations */
+    REVIEW: (attemptUuid: string) => `/api/v1/quizzes/parent/attempts/${attemptUuid}/review`,
   },
 
   CHILDREN: {

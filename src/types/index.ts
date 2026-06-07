@@ -58,6 +58,8 @@ export interface Goal {
   /** Optional display (e.g. currency or “extra screen time”) */
   rewardValue?: string;
   status: GoalStatus;
+  /** ISO timestamp the goal was created (used for sorting newest-first) */
+  createdAt?: string;
 }
 
 export type MissionSubmissionStatus = 'pending' | 'submitted' | 'approved';

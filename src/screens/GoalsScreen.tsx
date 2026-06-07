@@ -28,11 +28,20 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { setStatusBarStyle } from 'expo-status-bar';
 import { useFocusEffect } from '@react-navigation/native';
-import { AppGradientHeader, Button, Card, InputField } from '../components';
+import { AppGradientHeader, AppRefreshControl, Button, Card, InputField } from '../components';
 import { DatePickerField } from '../components/DatePickerField';
+import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { toIsoDate } from '../utils/age';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
+import { useChildren } from '../context/ChildrenContext';
+import { api, ENDPOINTS } from '../api';
 import type { Goal, GoalStatus } from '../types';
+import {
+	mapApiGoalsToGoals,
+	type ApiGoal,
+	type CreateGoalPayload,
+} from '../types/goal.api';
 import { formatAppDate } from '../utils/dateFormat';
 import {
 	FLOATING_TAB_BAR_VISUAL_HEIGHT,
@@ -46,44 +55,20 @@ import {
 } from '../theme';
 import { floatingPillShadow, goalStatusFloatingPalette } from '../theme/missionPillStyles';
 
-const INITIAL_GOALS: Goal[] = [
-	{
-		id: 'g1',
-		title: 'Morning routine streak',
-		description: 'Complete the morning checklist before school each day.',
-		currentRawPoints: 120,
-		targetRawPoints: 200,
-		startDate: '2026-03-01',
-		endDate: '2026-04-30',
-		rewardName: 'Movie night',
-		rewardValue: '$25 voucher',
-		status: 'active',
-	},
-	{
-		id: 'g2',
-		title: 'Homework before play',
-		description: 'Finish homework before recreational screen time.',
-		currentRawPoints: 80,
-		targetRawPoints: 80,
-		startDate: '2026-02-15',
-		endDate: '2026-03-31',
-		rewardName: 'New art supplies',
-		status: 'completed',
-	},
-	{
-		id: 'g3',
-		title: 'Kind words challenge',
-		description: 'Log kind actions toward family members.',
-		currentRawPoints: 45,
-		targetRawPoints: 150,
-		startDate: '2026-03-10',
-		endDate: '2026-05-01',
-		rewardName: 'Choose weekend activity',
-		status: 'paused',
-	},
-];
+/**
+ * The create-goal form does not capture a behaviour aspect yet.
+ * TODO: replace with an aspect picker (GET BEHAVIOUR.ASPECTS) so each goal
+ * can target the intended aspect instead of this default.
+ */
+const DEFAULT_GOAL_ASPECT_ID = 1;
 
 /* ─── helper fns ─── */
+
+/** Pulls the first positive number out of a free-text reward value, else null. */
+function parseRewardValue(raw: string): number | null {
+	const n = Number.parseFloat(raw.replace(/[^0-9.]/g, ''));
+	return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 function formatGoalStatusLabel(status: GoalStatus): string {
 	switch (status) {
@@ -235,8 +220,10 @@ function SummaryStat({
 
 const GoalsScreen: React.FC = () => {
 	const { showToast } = useToast();
+	const { user } = useAuth();
+	const { selectedChildId } = useChildren();
 	const insets = useSafeAreaInsets();
-	const [goals, setGoals] = useState<Goal[]>(INITIAL_GOALS);
+	const [goals, setGoals] = useState<Goal[]>([]);
 	const [showTooltip, setShowTooltip] = useState(false);
 	const tooltipShownRef = useRef(false);
 
@@ -263,6 +250,28 @@ const GoalsScreen: React.FC = () => {
 			};
 		}, [])
 	);
+
+	// Load goals from API for the signed-in parent.
+	const loadGoals = useCallback(async () => {
+		const parentUuid = user?.id;
+		if (!parentUuid) return;
+		const res = await api.get<ApiGoal[]>(ENDPOINTS.GOALS.BY_PARENT(parentUuid));
+		setGoals(mapApiGoalsToGoals(res.data.data ?? []));
+	}, [user?.id]);
+
+	useEffect(() => {
+		let active = true;
+		loadGoals().catch(() => {
+			if (active) {
+				showToast({ type: 'error', message: 'Could not load goals. Pull to retry.' });
+			}
+		});
+		return () => {
+			active = false;
+		};
+	}, [loadGoals, showToast]);
+
+	const { refreshing, onRefresh } = usePullToRefresh(loadGoals);
 
 	const [modalOpen, setModalOpen] = useState(false);
 
@@ -296,7 +305,10 @@ const GoalsScreen: React.FC = () => {
 			const pri = (g: Goal) => (g.status === 'active' ? 0 : g.status === 'paused' ? 1 : 2);
 			const p = pri(a) - pri(b);
 			if (p !== 0) return p;
-			return a.title.localeCompare(b.title);
+			// Within the same status, newest created_at first.
+			const ta = a.createdAt ? Date.parse(a.createdAt) : 0;
+			const tb = b.createdAt ? Date.parse(b.createdAt) : 0;
+			return tb - ta;
 		});
 	}, [goals]);
 
@@ -331,7 +343,7 @@ const GoalsScreen: React.FC = () => {
 		resetForm();
 	}, [resetForm]);
 
-	const submitGoal = useCallback(() => {
+	const submitGoal = useCallback(async () => {
 		const title = formTitle.trim();
 		const rewardName = formRewardName.trim();
 		const start = formStart.trim();
@@ -364,33 +376,45 @@ const GoalsScreen: React.FC = () => {
 			return;
 		}
 
+		// student_uuid comes from the globally-selected child (ChildrenContext).
+		if (!selectedChildId) {
+			setFormError('Select a child before creating a goal.');
+			Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+			return;
+		}
+
 		setFormError(null);
 		setIsSubmitting(true);
 		Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-		// Simulate brief async save — swap with real API later
-		setTimeout(() => {
-			const newGoal: Goal = {
-				id: `goal-${Date.now()}`,
-				title,
-				description: '',
-				currentRawPoints: 0,
-				targetRawPoints: target,
-				startDate: start,
-				endDate: end,
-				rewardName,
-				rewardValue: formRewardValue.trim() || undefined,
-				status: 'active',
-			};
+		const payload: CreateGoalPayload = {
+			student_uuid: selectedChildId,
+			aspect_id: DEFAULT_GOAL_ASPECT_ID,
+			goal_name: title,
+			goal_description: null,
+			reward_name: rewardName,
+			reward_value: parseRewardValue(formRewardValue),
+			start_date: start, // already YYYY-MM-DD from the date pickers
+			end_date: end,
+			target_raw_points: target,
+		};
 
-			setGoals((prev) => [newGoal, ...prev]);
+		try {
+			await api.post<ApiGoal>(ENDPOINTS.GOALS.CREATE, payload);
+			// Re-fetch the canonical list so the new goal shows with server-assigned
+			// fields (id, progress, etc.) regardless of the POST response shape.
+			await loadGoals();
 			Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 			showToast({
-				type: 'success', message: 'Goal created — it\'s now at the top!'
+				type: 'success', message: 'Goal created!'
 			});
-			setIsSubmitting(false);
 			closeModal();
-		}, 850);
+		} catch {
+			Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+			setFormError('Could not create the goal. Please try again.');
+		} finally {
+			setIsSubmitting(false);
+		}
 	}, [
 		formTitle,
 		formRewardName,
@@ -398,6 +422,8 @@ const GoalsScreen: React.FC = () => {
 		formStart,
 		formEnd,
 		formTargetRaw,
+		selectedChildId,
+		loadGoals,
 		showToast,
 		closeModal,
 	]);
@@ -413,6 +439,7 @@ const GoalsScreen: React.FC = () => {
 				style={styles.scroll}
 				contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPad }]}
 				showsVerticalScrollIndicator={false}
+				refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
 			>
 				{/* ── Summary strip ── */}
 				<SummaryStrip

@@ -1,5 +1,6 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -12,175 +13,30 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LottieView from 'lottie-react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { AppGradientHeader, Button, Card } from '../components';
+import { AppGradientHeader, AppRefreshControl, Button, Card } from '../components';
 import { borderRadius, colors, spacing, textStyles } from '../theme';
-import type { Quiz } from '../types';
+import { useChildren } from '../context/ChildrenContext';
+import { useToast } from '../context/ToastContext';
+import { usePullToRefresh } from '../hooks/usePullToRefresh';
+import { quizzesService } from '../services/quizzesService';
+import {
+  mapQuizListItem,
+  mapQuizQuestion,
+  type ApiQuizResult,
+  type QuizListEntry,
+  type QuizPlayQuestion,
+  type SaveAnswerPayload,
+} from '../types/quiz.api';
+import { getDisplayMessage } from '../utils/errorParser';
+import { formatAppDate } from '../utils/dateFormat';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-
-type QuizQuestion =
-  | {
-    id: string;
-    prompt: string;
-    type: 'single';
-    options: string[];
-    correctAnswer: number;
-  }
-  | {
-    id: string;
-    prompt: string;
-    type: 'text';
-    placeholder: string;
-    correctAnswer: string[];
-  };
-
-type QuizSet = Quiz & {
-  dueDateLabel: string;
-  isExpired?: boolean;
-  summary: string;
-  questionsList: QuizQuestion[];
-};
 
 type SessionPhase = 'list' | 'quiz' | 'result';
 
-const QUIZ_SETS: QuizSet[] = [
-  {
-    id: 'math-logic',
-    title: 'Math',
-    summary: 'Quick number patterns and basic reasoning practice.',
-    category: 'Logic',
-    questions: 4,
-    completed: false,
-    estimatedMinutes: 8,
-    dueDateLabel: 'Due Apr 12, 2026',
-    questionsList: [
-      {
-        id: 'math-1',
-        type: 'single',
-        prompt: 'Which 3 numbers have the same answer whether they are added or multiplied together?',
-        options: ['6, 3 and 4', '1, 2 and 3', '2, 4 and 6', '1, 2 and 4'],
-        correctAnswer: 1,
-      },
-      {
-        id: 'math-2',
-        type: 'single',
-        prompt: 'What number should come next in the series 3, 6, 12, 24?',
-        options: ['30', '36', '48', '52'],
-        correctAnswer: 2,
-      },
-      {
-        id: 'math-3',
-        type: 'text',
-        prompt: 'Type the value of 9 x 7.',
-        placeholder: 'Enter your answer',
-        correctAnswer: ['63', 'sixty three', 'sixty-three'],
-      },
-      {
-        id: 'math-4',
-        type: 'single',
-        prompt: 'If a square has 4 equal sides, how many corners does it have?',
-        options: ['2', '3', '4', '5'],
-        correctAnswer: 2,
-      },
-    ],
-  },
-  {
-    id: 'science-basics',
-    title: 'Science Basics',
-    summary: 'A short check-in on observation, weather, and living things.',
-    category: 'STEM',
-    questions: 5,
-    completed: true,
-    score: 80,
-    time: '6m 12s',
-    estimatedMinutes: 7,
-    dueDateLabel: 'Due Apr 10, 2026',
-    questionsList: [
-      {
-        id: 'science-1',
-        type: 'single',
-        prompt: 'Which planet is known as the Red Planet?',
-        options: ['Mars', 'Venus', 'Mercury', 'Jupiter'],
-        correctAnswer: 0,
-      },
-      {
-        id: 'science-2',
-        type: 'single',
-        prompt: 'Plants make food using sunlight in a process called?',
-        options: ['Evaporation', 'Photosynthesis', 'Respiration', 'Digestion'],
-        correctAnswer: 1,
-      },
-      {
-        id: 'science-3',
-        type: 'text',
-        prompt: 'Type the gas that humans breathe in to stay alive.',
-        placeholder: 'Enter gas name',
-        correctAnswer: ['oxygen'],
-      },
-      {
-        id: 'science-4',
-        type: 'single',
-        prompt: 'What do we use to measure temperature?',
-        options: ['Scale', 'Clock', 'Thermometer', 'Compass'],
-        correctAnswer: 2,
-      },
-      {
-        id: 'science-5',
-        type: 'single',
-        prompt: 'Which of these is a living thing?',
-        options: ['Rock', 'Tree', 'Pencil', 'Bottle'],
-        correctAnswer: 1,
-      },
-    ],
-  },
-  {
-    id: 'english-words',
-    title: 'English',
-    summary: 'Vocabulary and sentence sense for everyday communication.',
-    category: 'Language',
-    questions: 3,
-    completed: false,
-    isExpired: true,
-    estimatedMinutes: 5,
-    dueDateLabel: 'Expired Apr 5, 2026',
-    questionsList: [
-      {
-        id: 'english-1',
-        type: 'single',
-        prompt: 'Which word is the opposite of “bright”?',
-        options: ['Shiny', 'Dark', 'Happy', 'Fast'],
-        correctAnswer: 1,
-      },
-      {
-        id: 'english-2',
-        type: 'text',
-        prompt: 'Type a punctuation mark used to end a question.',
-        placeholder: 'Enter symbol or its name',
-        correctAnswer: ['?', 'question mark'],
-      },
-      {
-        id: 'english-3',
-        type: 'single',
-        prompt: 'Choose the correct sentence.',
-        options: [
-          'She are reading a book.',
-          'She is reading a book.',
-          'She reading a book.',
-          'She am reading a book.',
-        ],
-        correctAnswer: 1,
-      },
-    ],
-  },
-];
-
 const PASSING_SCORE = 60;
 
-function normalizeAnswer(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, ' ');
-}
-
-function statusMeta(quiz: QuizSet) {
-  if (quiz.isExpired) {
+function statusMeta(entry: QuizListEntry) {
+  if (entry.isExpired) {
     return {
       label: 'Expired',
       icon: 'event-busy',
@@ -189,12 +45,21 @@ function statusMeta(quiz: QuizSet) {
     };
   }
 
-  if (quiz.completed) {
+  if (entry.completed) {
     return {
       label: 'Complete',
       icon: 'check-circle',
       backgroundColor: colors.mintSoft,
       textColor: colors.growth,
+    };
+  }
+
+  if (entry.attemptStatus === 'in_progress') {
+    return {
+      label: 'In Progress',
+      icon: 'autorenew',
+      backgroundColor: colors.skySoft,
+      textColor: colors.info,
     };
   }
 
@@ -204,6 +69,31 @@ function statusMeta(quiz: QuizSet) {
     backgroundColor: colors.peachSoft,
     textColor: colors.accent,
   };
+}
+
+function quizDueLabel(entry: Pick<QuizListEntry, 'isExpired' | 'dueDate'>): string {
+  const label = formatAppDate(entry.dueDate);
+  return entry.isExpired ? `Expired ${label}` : `Due ${label}`;
+}
+
+function listButton(entry: QuizListEntry): {
+  title: string;
+  variant: 'primary' | 'outline' | 'ghost';
+  disabled: boolean;
+} {
+  if (entry.isExpired) {
+    return { title: 'Expired', variant: 'ghost', disabled: true };
+  }
+  if (entry.attemptStatus === 'in_progress') {
+    return { title: 'Resume', variant: 'primary', disabled: false };
+  }
+  if (entry.completed) {
+    const canRetake = entry.attemptsUsed < entry.maxAttempts;
+    return canRetake
+      ? { title: 'Start Again', variant: 'outline', disabled: false }
+      : { title: 'Completed', variant: 'outline', disabled: true };
+  }
+  return { title: 'Start Quiz', variant: 'primary', disabled: false };
 }
 
 function resultCopy(score: number) {
@@ -228,143 +118,215 @@ function resultCopy(score: number) {
 }
 
 const QuizzesScreen: React.FC = () => {
-  const [quizzes, setQuizzes] = useState<QuizSet[]>(QUIZ_SETS);
+  const { selectedChildId } = useChildren();
+  const { showToast } = useToast();
+
+  const [entries, setEntries] = useState<QuizListEntry[]>([]);
+  const [listLoading, setListLoading] = useState(true);
+  const [listError, setListError] = useState(false);
+
   const [phase, setPhase] = useState<SessionPhase>('list');
-  const [activeQuizId, setActiveQuizId] = useState<string | null>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
+
+  const [activeEntry, setActiveEntry] = useState<QuizListEntry | null>(null);
+  const [questions, setQuestions] = useState<QuizPlayQuestion[]>([]);
+  const [attemptUuid, setAttemptUuid] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, string | number>>({});
-  const [resultScore, setResultScore] = useState<number | null>(null);
+  // Keyed by questionId. Option questions store the selected option index (number);
+  // short-answer questions store the typed text (string).
+  const [answers, setAnswers] = useState<Record<number, string | number>>({});
+  const [savedIds, setSavedIds] = useState<Set<number>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [result, setResult] = useState<ApiQuizResult | null>(null);
 
-  const activeQuiz = useMemo(
-    () => quizzes.find((quiz) => quiz.id === activeQuizId) ?? null,
-    [activeQuizId, quizzes]
-  );
+  const loadList = useCallback(async () => {
+    if (!selectedChildId) {
+      setEntries([]);
+      setListError(false);
+      setListLoading(false);
+      return;
+    }
+    setListError(false);
+    try {
+      const items = await quizzesService.list(selectedChildId);
+      setEntries(items.map(mapQuizListItem));
+    } catch (e) {
+      setListError(true);
+      showToast({ type: 'error', message: getDisplayMessage(e) });
+    } finally {
+      setListLoading(false);
+    }
+  }, [selectedChildId, showToast]);
 
-  const currentQuestion = activeQuiz?.questionsList[currentIndex] ?? null;
-  const attendedCount = useMemo(
-    () => Object.values(answers).filter((value) => value !== '' && value !== null).length,
-    [answers]
-  );
+  useEffect(() => {
+    setListLoading(true);
+    loadList();
+  }, [loadList]);
+
+  const { refreshing, onRefresh } = usePullToRefresh(loadList);
+
+  const activeQuiz = activeEntry;
+  const currentQuestion = questions[currentIndex] ?? null;
+
+  const attendedCount = useMemo(() => {
+    const ids = new Set<number>(savedIds);
+    Object.entries(answers).forEach(([key, value]) => {
+      if (value !== '' && value !== null && value !== undefined) {
+        ids.add(Number(key));
+      }
+    });
+    return ids.size;
+  }, [savedIds, answers]);
 
   const quizStats = useMemo(() => {
-    const total = quizzes.length;
-    const completed = quizzes.filter((quiz) => quiz.completed).length;
+    const total = entries.length;
+    const completed = entries.filter((entry) => entry.completed).length;
     return {
       total,
       completed,
       pending: total - completed,
     };
-  }, [quizzes]);
+  }, [entries]);
 
   const isCurrentQuestionAnswered = useMemo(() => {
     if (!currentQuestion) {
       return false;
     }
-
-    const value = answers[currentQuestion.id];
-    if (currentQuestion.type === 'text') {
+    const value = answers[currentQuestion.questionId];
+    if (currentQuestion.type === 'short_answer') {
       return typeof value === 'string' && value.trim().length > 0;
     }
-
     return typeof value === 'number';
   }, [answers, currentQuestion]);
 
-  const openQuiz = useCallback((quizId: string) => {
-    const selectedQuiz = quizzes.find((quiz) => quiz.id === quizId);
-    if (selectedQuiz?.isExpired) {
-      return;
-    }
-    setActiveQuizId(quizId);
-    setCurrentIndex(0);
-    setAnswers({});
-    setResultScore(null);
-    setPhase('quiz');
-  }, [quizzes]);
-
   const goBackToList = useCallback(() => {
     setPhase('list');
+    setActiveEntry(null);
+    setQuestions([]);
+    setAttemptUuid(null);
     setCurrentIndex(0);
     setAnswers({});
-    setResultScore(null);
-    setActiveQuizId(null);
-  }, []);
+    setSavedIds(new Set());
+    setResult(null);
+    loadList();
+  }, [loadList]);
 
-  const updateTextAnswer = useCallback((questionId: string, value: string) => {
+  const openQuiz = useCallback(
+    async (entry: QuizListEntry) => {
+      if (entry.isExpired) {
+        return;
+      }
+      if (!selectedChildId) {
+        showToast({ type: 'error', message: 'Select a child before starting a quiz.' });
+        return;
+      }
+      setOpeningId(entry.quizUuid);
+      try {
+        const detail = await quizzesService.detail(entry.quizUuid, selectedChildId);
+        const start = await quizzesService.start(entry.quizUuid, selectedChildId);
+
+        const sortedQuestions = [...(detail.questions ?? [])]
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .map(mapQuizQuestion);
+        const answered = new Set<number>(start.answeredQuestionIds ?? []);
+        const firstUnanswered = sortedQuestions.findIndex((q) => !answered.has(q.questionId));
+
+        setActiveEntry(entry);
+        setQuestions(sortedQuestions);
+        setAttemptUuid(start.attempt.uuid);
+        setSavedIds(answered);
+        setAnswers({});
+        setCurrentIndex(firstUnanswered < 0 ? 0 : firstUnanswered);
+        setResult(null);
+        setPhase('quiz');
+      } catch (e) {
+        showToast({ type: 'error', message: getDisplayMessage(e) });
+      } finally {
+        setOpeningId(null);
+      }
+    },
+    [selectedChildId, showToast]
+  );
+
+  const updateTextAnswer = useCallback((questionId: number, value: string) => {
     setAnswers((prev) => ({ ...prev, [questionId]: value }));
   }, []);
 
-  const updateOptionAnswer = useCallback((questionId: string, optionIndex: number) => {
+  const updateOptionAnswer = useCallback((questionId: number, optionIndex: number) => {
     setAnswers((prev) => ({ ...prev, [questionId]: optionIndex }));
   }, []);
 
-  const finishQuiz = useCallback(() => {
-    if (!activeQuiz) {
+  const handleNext = useCallback(async () => {
+    if (!activeEntry || !attemptUuid || !currentQuestion || !isCurrentQuestionAnswered || saving) {
       return;
     }
 
-    let correctCount = 0;
+    const answer = answers[currentQuestion.questionId];
+    const payload: SaveAnswerPayload =
+      currentQuestion.type === 'short_answer'
+        ? { question_id: currentQuestion.questionId, text_answer: String(answer).trim() }
+        : {
+            question_id: currentQuestion.questionId,
+            option_ids: [currentQuestion.options[answer as number].id],
+          };
 
-    activeQuiz.questionsList.forEach((question) => {
-      const submitted = answers[question.id];
-      if (question.type === 'single') {
-        if (submitted === question.correctAnswer) {
-          correctCount += 1;
-        }
-        return;
+    setSaving(true);
+    try {
+      await quizzesService.saveAnswer(attemptUuid, payload);
+      setSavedIds((prev) => new Set(prev).add(currentQuestion.questionId));
+
+      const isLast = currentIndex === questions.length - 1;
+      if (isLast) {
+        const res = await quizzesService.submit(attemptUuid);
+        setResult(res);
+        setEntries((prev) =>
+          prev.map((entry) =>
+            entry.quizUuid === activeEntry.quizUuid
+              ? {
+                  ...entry,
+                  attemptStatus: 'submitted',
+                  completed: true,
+                  scorePercent: res.scorePercent,
+                  attemptsUsed: entry.attemptsUsed + 1,
+                  currentAttemptUuid: null,
+                }
+              : entry
+          )
+        );
+        setPhase('result');
+      } else {
+        setCurrentIndex((prev) => prev + 1);
       }
-
-      if (typeof submitted === 'string') {
-        const normalized = normalizeAnswer(submitted);
-        if (question.correctAnswer.some((answer) => normalizeAnswer(answer) === normalized)) {
-          correctCount += 1;
-        }
-      }
-    });
-
-    const score = Math.round((correctCount / activeQuiz.questionsList.length) * 100);
-    setResultScore(score);
-    setQuizzes((prev) =>
-      prev.map((quiz) =>
-        quiz.id === activeQuiz.id
-          ? {
-            ...quiz,
-            completed: true,
-            score,
-            time: `${activeQuiz.estimatedMinutes ?? activeQuiz.questionsList.length}m`,
-          }
-          : quiz
-      )
-    );
-    setPhase('result');
-  }, [activeQuiz, answers]);
-
-  const handleNext = useCallback(() => {
-    if (!activeQuiz || !currentQuestion || !isCurrentQuestionAnswered) {
-      return;
+    } catch (e) {
+      // due-date passed / time expired / already submitted — surface and bail to list
+      showToast({ type: 'error', message: getDisplayMessage(e) });
+      goBackToList();
+    } finally {
+      setSaving(false);
     }
+  }, [
+    activeEntry,
+    attemptUuid,
+    currentQuestion,
+    isCurrentQuestionAnswered,
+    saving,
+    answers,
+    currentIndex,
+    questions.length,
+    goBackToList,
+    showToast,
+  ]);
 
-    if (currentIndex === activeQuiz.questionsList.length - 1) {
-      finishQuiz();
-      return;
-    }
-
-    setCurrentIndex((prev) => prev + 1);
-  }, [activeQuiz, currentIndex, currentQuestion, finishQuiz, isCurrentQuestionAnswered]);
-
-  const resultDetails = resultCopy(resultScore ?? 0);
-  const scoreLabel =
-    activeQuiz && resultScore != null
-      ? `${Math.round((resultScore / 100) * activeQuiz.questionsList.length)}/${activeQuiz.questionsList.length}`
-      : '0/0';
-
+  /* ─── Quiz-taking phase ─── */
   if (phase === 'quiz' && activeQuiz && currentQuestion) {
-    const progressPercent = ((currentIndex + 1) / activeQuiz.questionsList.length) * 100;
+    const progressPercent = ((currentIndex + 1) / questions.length) * 100;
+    const isLast = currentIndex === questions.length - 1;
 
     return (
       <SafeAreaView style={styles.root} edges={['left', 'right', 'bottom']}>
         <AppGradientHeader
           title={activeQuiz.title}
-          subtitle={activeQuiz.dueDateLabel}
+          subtitle={quizDueLabel(activeQuiz)}
           leadingMode="back"
           onBackPress={goBackToList}
         />
@@ -385,12 +347,12 @@ const QuizzesScreen: React.FC = () => {
                   <Text style={styles.progressEyebrow}>Questions</Text>
                   <Text style={styles.progressNumbers}>
                     <Text style={styles.progressAttended}>{attendedCount}</Text>/
-                    {activeQuiz.questionsList.length}
+                    {questions.length}
                   </Text>
                 </View>
                 <View style={styles.progressBadge}>
                   <Icon name="event" size={16} color={colors.primaryDark} />
-                  <Text style={styles.progressBadgeText}>{activeQuiz.dueDateLabel}</Text>
+                  <Text style={styles.progressBadgeText}>{quizDueLabel(activeQuiz)}</Text>
                 </View>
               </View>
               <View style={styles.progressBarTrack}>
@@ -403,15 +365,31 @@ const QuizzesScreen: React.FC = () => {
               <Text style={styles.questionText}>{currentQuestion.prompt}</Text>
             </View>
 
-            {currentQuestion.type === 'single' ? (
+            {currentQuestion.type === 'short_answer' ? (
+              <Card variant="outlined" style={styles.inputCard}>
+                <Text style={styles.inputLabel}>Your answer</Text>
+                <TextInput
+                  value={
+                    typeof answers[currentQuestion.questionId] === 'string'
+                      ? `${answers[currentQuestion.questionId]}`
+                      : ''
+                  }
+                  onChangeText={(value) => updateTextAnswer(currentQuestion.questionId, value)}
+                  placeholder="Type your answer"
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.textInput}
+                  multiline
+                />
+              </Card>
+            ) : (
               <View style={styles.optionsWrap}>
                 {currentQuestion.options.map((option, index) => {
-                  const selected = answers[currentQuestion.id] === index;
+                  const selected = answers[currentQuestion.questionId] === index;
 
                   return (
                     <Pressable
-                      key={`${currentQuestion.id}-${index}`}
-                      onPress={() => updateOptionAnswer(currentQuestion.id, index)}
+                      key={option.id}
+                      onPress={() => updateOptionAnswer(currentQuestion.questionId, index)}
                       style={({ pressed }) => [
                         styles.optionCard,
                         selected && styles.optionCardSelected,
@@ -428,34 +406,23 @@ const QuizzesScreen: React.FC = () => {
                         </Text>
                       </View>
                       <Text style={[styles.optionText, selected && styles.optionTextSelected]}>
-                        {option}
+                        {option.text}
                       </Text>
                     </Pressable>
                   );
                 })}
               </View>
-            ) : (
-              <Card variant="outlined" style={styles.inputCard}>
-                <Text style={styles.inputLabel}>Your answer</Text>
-                <TextInput
-                  value={typeof answers[currentQuestion.id] === 'string' ? `${answers[currentQuestion.id]}` : ''}
-                  onChangeText={(value) => updateTextAnswer(currentQuestion.id, value)}
-                  placeholder={currentQuestion.placeholder}
-                  placeholderTextColor={colors.textMuted}
-                  style={styles.textInput}
-                  multiline
-                />
-              </Card>
             )}
           </ScrollView>
 
           <View style={styles.quizFooter}>
             <Button
-              title={currentIndex === activeQuiz.questionsList.length - 1 ? 'Submit Quiz' : 'Next'}
+              title={isLast ? 'Submit Quiz' : 'Next'}
               onPress={handleNext}
               variant="primary"
               size="large"
-              disabled={!isCurrentQuestionAnswered}
+              loading={saving}
+              disabled={!isCurrentQuestionAnswered || saving}
             />
           </View>
         </KeyboardAvoidingView>
@@ -463,14 +430,24 @@ const QuizzesScreen: React.FC = () => {
     );
   }
 
-  if (phase === 'result' && activeQuiz && resultScore != null) {
-    const passed = resultScore >= PASSING_SCORE;
+  /* ─── Result phase ─── */
+  if (phase === 'result' && activeQuiz && result) {
+    const isGraded = activeQuiz.quizType === 'graded' && result.scorePercent != null;
+    const percent = isGraded ? Math.round(result.scorePercent as number) : 0;
+    const passed = isGraded ? percent >= PASSING_SCORE : true;
+    const details = isGraded
+      ? resultCopy(percent)
+      : {
+          title: 'Submitted!',
+          body: 'Thanks for sharing this about your child. Your responses have been recorded.',
+        };
+    const scoreLabel = `${result.score ?? 0}/${result.totalMarks ?? 0}`;
 
     return (
       <SafeAreaView style={styles.root} edges={['left', 'right', 'bottom']}>
         <AppGradientHeader
           title={activeQuiz.title}
-          subtitle={passed ? 'Quiz completed' : 'Try again when ready'}
+          subtitle={isGraded ? (passed ? 'Quiz completed' : 'Try again when ready') : 'Submitted'}
           leadingMode="back"
           onBackPress={goBackToList}
         />
@@ -493,24 +470,30 @@ const QuizzesScreen: React.FC = () => {
             />
           </View>
 
-          <Text style={styles.resultScoreCaption}>Your Score</Text>
-          <Text style={styles.resultScoreValue}>
-            {scoreLabel} <Text style={styles.resultScorePercent}>({resultScore}%)</Text>
-          </Text>
-          <Text style={styles.resultTitle}>{resultDetails.title}</Text>
-          <Text style={styles.resultBody}>{resultDetails.body}</Text>
+          {isGraded ? (
+            <>
+              <Text style={styles.resultScoreCaption}>Your Score</Text>
+              <Text style={styles.resultScoreValue}>
+                {scoreLabel} <Text style={styles.resultScorePercent}>({percent}%)</Text>
+              </Text>
+            </>
+          ) : null}
+          <Text style={styles.resultTitle}>{details.title}</Text>
+          <Text style={styles.resultBody}>{details.body}</Text>
 
           <Card variant="outlined" style={styles.resultMetaCard}>
             <View style={styles.resultMetaRow}>
               <Icon
-                name={passed ? 'emoji-events' : 'refresh'}
+                name={isGraded ? (passed ? 'emoji-events' : 'refresh') : 'check-circle'}
                 size={18}
-                color={passed ? colors.accent : colors.error}
+                color={isGraded ? (passed ? colors.accent : colors.error) : colors.growth}
               />
               <Text style={styles.resultMetaText}>
-                {passed
-                  ? 'This quiz is now marked complete in your quizzes list.'
-                  : 'You can retake this quiz from the list whenever you want.'}
+                {isGraded
+                  ? passed
+                    ? 'This quiz is now marked complete in your quizzes list.'
+                    : 'You can retake this quiz from the list whenever you want.'
+                  : 'Your responses have been recorded for this quiz.'}
               </Text>
             </View>
           </Card>
@@ -526,15 +509,46 @@ const QuizzesScreen: React.FC = () => {
     );
   }
 
-  return (
-    <SafeAreaView style={styles.root} edges={['left', 'right', 'bottom']}>
-      <AppGradientHeader title="Quizzes" subtitle="Track progress and start a new quiz set" />
+  /* ─── List phase ─── */
+  const renderListBody = () => {
+    if (listLoading) {
+      return (
+        <View style={styles.centerState}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      );
+    }
 
-      <ScrollView
-        style={styles.flex}
-        contentContainerStyle={styles.listScrollContent}
-        showsVerticalScrollIndicator={false}
-      >
+    if (!selectedChildId) {
+      return (
+        <View style={styles.centerState}>
+          <Icon name="child-care" size={36} color={colors.textMuted} />
+          <Text style={styles.centerStateText}>Select a child to see their quizzes.</Text>
+        </View>
+      );
+    }
+
+    if (listError) {
+      return (
+        <View style={styles.centerState}>
+          <Icon name="error-outline" size={36} color={colors.error} />
+          <Text style={styles.centerStateText}>Could not load quizzes.</Text>
+          <Button title="Retry" onPress={loadList} variant="outline" size="small" />
+        </View>
+      );
+    }
+
+    if (entries.length === 0) {
+      return (
+        <View style={styles.centerState}>
+          <Icon name="quiz" size={36} color={colors.textMuted} />
+          <Text style={styles.centerStateText}>No quizzes yet. Pull down to refresh.</Text>
+        </View>
+      );
+    }
+
+    return (
+      <>
         <Animated.View
           entering={FadeInDown.delay(0 * 75)
             .springify()
@@ -560,13 +574,14 @@ const QuizzesScreen: React.FC = () => {
           </Card>
         </Animated.View>
 
-        {quizzes.map((quiz, quizIndex) => {
+        {entries.map((quiz, quizIndex) => {
           const status = statusMeta(quiz);
-          const isExpired = Boolean(quiz.isExpired);
+          const isExpired = quiz.isExpired;
+          const btn = listButton(quiz);
 
           return (
             <Animated.View
-              key={quiz.id}
+              key={quiz.quizUuid}
               entering={FadeInDown.delay(quizIndex * 75)
                 .springify()
                 .damping(18)
@@ -575,7 +590,7 @@ const QuizzesScreen: React.FC = () => {
             >
               <Card
                 variant="elevated"
-                style={[styles.quizCard, isExpired && styles.quizCardExpired]}
+                style={StyleSheet.flatten([styles.quizCard, isExpired && styles.quizCardExpired])}
               >
                 <View style={styles.quizCardTop}>
                   <View style={styles.quizCardTitleWrap}>
@@ -598,7 +613,7 @@ const QuizzesScreen: React.FC = () => {
                       color={isExpired ? colors.textMuted : colors.primary}
                     />
                     <Text style={[styles.metaChipText, isExpired && styles.metaChipTextExpired]}>
-                      {quiz.questions} questions
+                      {quiz.questionCount} questions
                     </Text>
                   </View>
                   <View style={[styles.metaChip, isExpired && styles.metaChipExpired]}>
@@ -608,7 +623,7 @@ const QuizzesScreen: React.FC = () => {
                       color={isExpired ? colors.textMuted : colors.primary}
                     />
                     <Text style={[styles.metaChipText, isExpired && styles.metaChipTextExpired]}>
-                      {quiz.dueDateLabel}
+                      {quizDueLabel(quiz)}
                     </Text>
                   </View>
                 </View>
@@ -616,22 +631,40 @@ const QuizzesScreen: React.FC = () => {
                 {quiz.completed ? (
                   <View style={styles.completedStrip}>
                     <Text style={styles.completedStripText}>
-                      Score {quiz.score ?? 0}%{quiz.time ? ` • ${quiz.time}` : ''}
+                      {quiz.quizType === 'graded' && quiz.scorePercent != null
+                        ? `Score ${Math.round(quiz.scorePercent)}%`
+                        : 'Completed'}
                     </Text>
                   </View>
                 ) : null}
 
                 <Button
-                  title={isExpired ? 'Expired' : quiz.completed ? 'Start Again' : 'Start Quiz'}
-                  onPress={() => openQuiz(quiz.id)}
-                  variant={isExpired ? 'ghost' : quiz.completed ? 'outline' : 'primary'}
+                  title={btn.title}
+                  onPress={() => openQuiz(quiz)}
+                  variant={btn.variant}
                   size="large"
-                  disabled={isExpired}
+                  loading={openingId === quiz.quizUuid}
+                  disabled={btn.disabled || openingId !== null}
                 />
               </Card>
             </Animated.View>
           );
         })}
+      </>
+    );
+  };
+
+  return (
+    <SafeAreaView style={styles.root} edges={['left', 'right', 'bottom']}>
+      <AppGradientHeader title="Quizzes" subtitle="Track progress and start a new quiz set" />
+
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={styles.listScrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        {renderListBody()}
       </ScrollView>
     </SafeAreaView>
   );
@@ -644,6 +677,18 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1,
+  },
+  centerState: {
+    flexGrow: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl,
+    gap: spacing.sm,
+  },
+  centerStateText: {
+    ...textStyles.bodyMedium,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
   listScrollContent: {
     paddingHorizontal: spacing.lg,

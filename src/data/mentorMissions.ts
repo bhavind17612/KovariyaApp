@@ -70,7 +70,7 @@ export function getDailyStatusForToday(m: MentorMission): MentorDailyStatus | nu
   if (!isMissionDateInRange(m, today)) {
     return null;
   }
-  const entry = m.completionHistory.find((h) => h.date === today);
+  const entry = (m.completionHistory ?? []).find((h) => h.date === today);
   if (!entry) {
     return 'pending';
   }

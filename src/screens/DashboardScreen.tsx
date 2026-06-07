@@ -27,6 +27,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import {
   AppGradientHeader,
+  AppRefreshControl,
   Card,
   Button,
   ProgressCircle,
@@ -34,6 +35,7 @@ import {
   WeeklyAspectProgressChart,
   AIInsightsCard,
 } from '../components';
+import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import {
   colors,
   spacing,
@@ -280,7 +282,7 @@ const DashboardScreen: React.FC = () => {
   // Extracted as a stable callback so it can be called both on mount/language
   // change AND imperatively after a rating is saved.
   const fetchAspects = useCallback(() => {
-    behaviourService.getAspects(ratingLang, selectedChild?.id)
+    return behaviourService.getAspects(ratingLang, selectedChild?.id)
       .then(({ apiAspects, maps }) => {
         setAspectApiMaps(maps);
         if (apiAspects.length > 0) {
@@ -333,6 +335,8 @@ const DashboardScreen: React.FC = () => {
   useEffect(() => {
     fetchAspects();
   }, [fetchAspects]);
+
+  const { refreshing, onRefresh } = usePullToRefresh(fetchAspects);
 
   const openAspectRating = useCallback((aspect: RatingAspectDefinition) => {
     setRatingSheetAspect(aspect);
@@ -508,6 +512,7 @@ const DashboardScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPad }]}
+        refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <View style={styles.ratingAspectsSection}>
           <Animated.View entering={FadeInDown.springify().damping(18).stiffness(220)}>
