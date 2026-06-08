@@ -9,6 +9,7 @@ import {
   Platform,
   StatusBar as RNStatusBar,
   Modal,
+  Alert,
   useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -36,6 +37,9 @@ import {
   AIInsightsCard,
 } from '../components';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
+import { MissionProofModal } from '../components/missions/MissionProofModal';
+import { missionsService } from '../services/missionsService';
+import type { ApiTodayMission, MissionDailyStatus } from '../types/mission.api';
 import {
   colors,
   spacing,
@@ -76,22 +80,6 @@ const MISSION_FEEDBACK_MISSED =
 const MISSION_GRADIENT_PENDING = ['#F7F6FB', '#F3F1F9', '#EFF2F8'] as const;
 const MISSION_GRADIENT_DONE = ['#F6FAF8', '#F1F7F4', '#ECF4EF'] as const;
 const MISSION_GRADIENT_MISSED = ['#FBF9F8', '#F9F5F3', '#F6F0ED'] as const;
-
-/** Mock daily mission per child; replace with API. */
-const MOCK_TODAY_MISSION_BY_CHILD: Record<string, { title: string; detail: string }> = {
-  '1': {
-    title: 'One gratitude moment',
-    detail: 'Before bed, share one thing you appreciated about today together.',
-  },
-  '2': {
-    title: '10-minute focused homework block',
-    detail: 'Set a timer, one task only — celebrate when the timer ends.',
-  },
-  '3': {
-    title: 'Kind words practice',
-    detail: 'Give two specific compliments to someone at home today.',
-  },
-};
 
 const MOCK_FAMILY_SCORE = 84; // 0-100 (percentage)
 
@@ -236,9 +224,11 @@ const DashboardScreen: React.FC = () => {
     [insets.bottom]
   );
   const [selectedDayId, setSelectedDayId] = useState<string>('thu');
-  const [todayMissionByChildId, setTodayMissionByChildId] = useState<
-    Record<string, TodayMissionStatus>
-  >({});
+  const [todayMission, setTodayMission] = useState<ApiTodayMission | null>(null);
+  const [todayMissionStatus, setTodayMissionStatus] = useState<TodayMissionStatus>('pending');
+  const [todayMissionDate, setTodayMissionDate] = useState<string>('');
+  const [missionLogging, setMissionLogging] = useState(false);
+  const [proofModalOpen, setProofModalOpen] = useState(false);
   const [ratingSheetAspect, setRatingSheetAspect] = useState<RatingAspectDefinition | null>(null);
   const [ratingLang, setRatingLang] = useState<string>('en');
   const [ratingLanguageId, setRatingLanguageId] = useState<number | undefined>(undefined);
@@ -254,11 +244,6 @@ const DashboardScreen: React.FC = () => {
     selectedDayId,
   ]);
 
-  const todayMission = useMemo(
-    () => MOCK_TODAY_MISSION_BY_CHILD[selectedChild?.id ?? ''] ?? MOCK_TODAY_MISSION_BY_CHILD['1'],
-    [selectedChild?.id]
-  );
-
   const weeklyAspectProgressSeries = useMemo(
     () => getWeeklyAspectProgressSeries(selectedChild?.id ?? ''),
     [selectedChild?.id]
@@ -269,11 +254,74 @@ const DashboardScreen: React.FC = () => {
     [selectedChild?.id]
   );
 
-  const todayMissionStatus: TodayMissionStatus = todayMissionByChildId[selectedChild?.id ?? ''] ?? 'pending';
+  // ── Today's mission ──────────────────────────────────────────────────────
+  const fetchTodayMission = useCallback(async () => {
+    const studentUuid = selectedChild?.id;
+    if (!studentUuid) {
+      setTodayMission(null);
+      return;
+    }
+    try {
+      const { mission, today } = await missionsService.getTodayMission(studentUuid);
+      setTodayMission(mission);
+      setTodayMissionStatus(today?.status == null ? 'pending' : today.status);
+      setTodayMissionDate(today?.date ?? '');
+    } catch (err) {
+      setTodayMission(null);
+      showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 4000 });
+    }
+  }, [selectedChild?.id, showToast]);
 
-  const setTodayMissionForSelectedChild = useCallback((status: TodayMissionStatus) => {
-    setTodayMissionByChildId((prev) => ({ ...prev, [selectedChild?.id ?? '']: status }));
-  }, [selectedChild?.id]);
+  useEffect(() => {
+    fetchTodayMission();
+  }, [fetchTodayMission]);
+
+  const submitMissionLog = useCallback(
+    async (status: MissionDailyStatus, proofUri?: string, note?: string) => {
+      const studentUuid = selectedChild?.id;
+      if (!todayMission || !studentUuid || !todayMissionDate) {
+        return;
+      }
+      setMissionLogging(true);
+      try {
+        await missionsService.logMission(todayMission.id, {
+          studentUuid,
+          date: todayMissionDate,
+          status,
+          note,
+          proofUri,
+        });
+        setTodayMissionStatus(status);
+        setProofModalOpen(false);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        showToast({
+          type: 'success',
+          message: status === 'done' ? 'Mission marked done!' : 'Mission marked as missed.',
+        });
+      } catch (err) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 4000 });
+      } finally {
+        setMissionLogging(false);
+      }
+    },
+    [todayMission, todayMissionDate, selectedChild?.id, showToast]
+  );
+
+  const handleMarkDone = useCallback(() => {
+    Alert.alert(
+      'Add a photo proof?',
+      'Attach a photo as proof for this mission, or mark it done without one.',
+      [
+        { text: 'Skip', onPress: () => submitMissionLog('done') },
+        { text: 'Add Photo', onPress: () => setProofModalOpen(true) },
+      ]
+    );
+  }, [submitMissionLog]);
+
+  const handleMarkMissed = useCallback(() => {
+    submitMissionLog('missed');
+  }, [submitMissionLog]);
 
   // ── Behaviour aspects ────────────────────────────────────────────────────
   // Fetches the aspect list from the API and merges it with the local visual
@@ -336,7 +384,12 @@ const DashboardScreen: React.FC = () => {
     fetchAspects();
   }, [fetchAspects]);
 
-  const { refreshing, onRefresh } = usePullToRefresh(fetchAspects);
+  const refreshDashboard = useCallback(
+    () => Promise.all([fetchAspects(), fetchTodayMission()]),
+    [fetchAspects, fetchTodayMission]
+  );
+
+  const { refreshing, onRefresh } = usePullToRefresh(refreshDashboard);
 
   const openAspectRating = useCallback((aspect: RatingAspectDefinition) => {
     setRatingSheetAspect(aspect);
@@ -584,6 +637,7 @@ const DashboardScreen: React.FC = () => {
           </View>
         </View>
 
+        {todayMission ? (
         <Animated.View
           entering={FadeInDown.delay(0).springify().damping(18).stiffness(220)}
           style={styles.shadowWrapper}
@@ -641,7 +695,7 @@ const DashboardScreen: React.FC = () => {
                 <View style={styles.missionGlassPanel}>
                   <Text style={styles.missionTitle}>{todayMission.title}</Text>
                   <Text style={styles.missionDetail} numberOfLines={4}>
-                    {todayMission.detail}
+                    {todayMission.description ?? ''}
                   </Text>
 
                   {todayMissionStatus === 'pending' ? (
@@ -654,7 +708,9 @@ const DashboardScreen: React.FC = () => {
                           icon={
                             <Icon name="check-circle" size={18} color={colors.surface} />
                           }
-                          onPress={() => setTodayMissionForSelectedChild('done')}
+                          onPress={handleMarkDone}
+                          loading={missionLogging}
+                          disabled={missionLogging}
                           btnStyle={StyleSheet.flatten([
                             styles.missionButtonDone,
                             {
@@ -673,7 +729,8 @@ const DashboardScreen: React.FC = () => {
                           icon={
                             <Icon name="highlight-off" size={18} color={colors.surface} />
                           }
-                          onPress={() => setTodayMissionForSelectedChild('missed')}
+                          onPress={handleMarkMissed}
+                          disabled={missionLogging}
                           btnStyle={StyleSheet.flatten([
                             styles.missionButtonMissed,
                             {
@@ -709,6 +766,7 @@ const DashboardScreen: React.FC = () => {
             </LinearGradient>
           </View>
         </Animated.View>
+        ) : null}
 
         <Animated.View
           entering={FadeInDown.delay(60).springify().damping(18).stiffness(220)}
@@ -916,6 +974,12 @@ const DashboardScreen: React.FC = () => {
         childName={selectedChild?.name}
       />
 
+      <MissionProofModal
+        visible={proofModalOpen}
+        submitting={missionLogging}
+        onClose={() => setProofModalOpen(false)}
+        onSubmit={(proofUri, note) => submitMissionLog('done', proofUri, note)}
+      />
 
     </SafeAreaView>
   );

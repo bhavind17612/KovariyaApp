@@ -48,6 +48,10 @@ export const ENDPOINTS = {
     LIST: '/api/v1/missions',
     DETAIL: (id: string) => `/api/v1/missions/${id}`,
     SUBMIT: '/api/v1/missions/submit',
+    /** GET ?student_id=<uuid> — today's active mission + today's log status */
+    TODAY: '/api/v1/missions/parent/today',
+    /** POST (multipart) — log a mission for a child for a given day */
+    LOG: (missionUuid: string) => `/api/v1/missions/parent/${missionUuid}/log`,
   },
 
   QUIZZES: {
