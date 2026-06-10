@@ -32,6 +32,7 @@ export const ENDPOINTS = {
   },
 
   STUDENTS: {
+    LIST: '/api/v1/students',
     ONBOARDING: '/api/v1/students/onboarding',
   },
 

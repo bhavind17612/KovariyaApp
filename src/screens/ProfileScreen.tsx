@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { AppGradientHeader, Card, AddChildModal, LanguagePickerSheet } from '../components';
+import { studentsService } from '../services/studentsService';
 import { languageService } from '../services/languageService';
 import type { ApiLanguage } from '../types/language';
 import {
@@ -49,20 +50,20 @@ type SettingRow = {
   subtitle: string;
 };
 
-const INITIAL_CHILDREN: Child[] = [
-  {
-    id: '1',
-    name: 'Emma Johnson',
-    age: 8,
-    avatar: 'https://example.com/emma.jpg',
-  },
-  {
-    id: '2',
-    name: 'Noah Johnson',
-    age: 6,
-    avatar: 'https://example.com/noah.jpg',
-  },
-];
+/** Skeleton placeholder rendered while children are loading from the API. */
+function ChildSkeleton({ hasBorder }: { hasBorder: boolean }) {
+  return (
+    <View style={[styles.childRow, hasBorder && styles.childRowBorder]}>
+      <View style={styles.childAvatar}>
+        <View style={[styles.skeletonCircle, { width: 48, height: 48, borderRadius: 24 }]} />
+      </View>
+      <View style={styles.childInfo}>
+        <View style={[styles.skeletonBar, { width: '65%', height: 14, marginBottom: 6 }]} />
+        <View style={[styles.skeletonBar, { width: '35%', height: 12 }]} />
+      </View>
+    </View>
+  );
+}
 
 const SETTINGS_ROWS: SettingRow[] = [
   {
@@ -184,7 +185,9 @@ function InitialAvatar({
 const ProfileScreen: React.FC = () => {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
-  const [childrenList, setChildrenList] = useState<Child[]>(INITIAL_CHILDREN);
+  const [childrenList, setChildrenList] = useState<Child[]>([]);
+  const [childrenLoading, setChildrenLoading] = useState(true);
+  const hasFetchedChildren = useRef(false);
   const [addChildVisible, setAddChildVisible] = useState(false);
 
   // ── Language preference ────────────────────────────────────────────────────
@@ -241,6 +244,35 @@ const ProfileScreen: React.FC = () => {
   const onChildAdded = useCallback((child: Child) => {
     setChildrenList((prev) => [child, ...prev]);
   }, []);
+
+  // ── Fetch children from API on focus ─────────────────────────────────────
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      const fetchChildren = async () => {
+        // Show skeleton only on the very first load
+        if (!hasFetchedChildren.current) {
+          setChildrenLoading(true);
+        }
+        try {
+          const data = await studentsService.getChildren();
+          if (!cancelled) {
+            setChildrenList(data);
+            hasFetchedChildren.current = true;
+          }
+        } catch (err) {
+          // Keep existing list on error (or empty on first load)
+          if (!cancelled) {
+            console.warn('[ProfileScreen] Failed to fetch children:', err);
+          }
+        } finally {
+          if (!cancelled) setChildrenLoading(false);
+        }
+      };
+      fetchChildren();
+      return () => { cancelled = true; };
+    }, [])
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -346,39 +378,54 @@ const ProfileScreen: React.FC = () => {
                 <Icon name="add" size={22} color={colors.primaryDark} />
               </Pressable>
             </View>
-            {childrenList.map((child, index) => {
-              const subtitle = childProfileSubtitle(child);
-              return (
-                <Pressable
-                  key={child.id}
-                  style={({ pressed }) => [
-                    styles.childRow,
-                    index < childrenList.length - 1 && styles.childRowBorder,
-                    pressed && styles.pressedOpacity,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${child.name}, age ${child.age}`}
-                >
-                  <View style={styles.childAvatar}>
-                    <InitialAvatar
-                      label={firstNameInitial(child.name)}
-                      size={48}
-                      backgroundColor={colors.skySoft}
-                    />
-                  </View>
-                  <View style={styles.childInfo}>
-                    <Text style={styles.childName}>{child.name}</Text>
-                    <Text style={styles.childAge}>Age {child.age}</Text>
-                    {subtitle ? (
-                      <Text style={styles.childMeta} numberOfLines={2}>
-                        {subtitle}
-                      </Text>
-                    ) : null}
-                  </View>
-                  <Icon name="chevron-right" size={22} color={colors.textMuted} />
-                </Pressable>
-              );
-            })}
+            {childrenLoading ? (
+              <>
+                <ChildSkeleton hasBorder />
+                <ChildSkeleton hasBorder={false} />
+              </>
+            ) : childrenList.length === 0 ? (
+              <View style={styles.emptyChildren}>
+                <Icon name="child-care" size={36} color={colors.textMuted} />
+                <Text style={styles.emptyChildrenText}>No children added yet</Text>
+                <Text style={styles.emptyChildrenSubtext}>
+                  Tap the + button to add your child
+                </Text>
+              </View>
+            ) : (
+              childrenList.map((child, index) => {
+                const subtitle = childProfileSubtitle(child);
+                return (
+                  <Pressable
+                    key={child.id}
+                    style={({ pressed }) => [
+                      styles.childRow,
+                      index < childrenList.length - 1 && styles.childRowBorder,
+                      pressed && styles.pressedOpacity,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${child.name}, age ${child.age}`}
+                  >
+                    <View style={styles.childAvatar}>
+                      <InitialAvatar
+                        label={firstNameInitial(child.name)}
+                        size={48}
+                        backgroundColor={colors.skySoft}
+                      />
+                    </View>
+                    <View style={styles.childInfo}>
+                      <Text style={styles.childName}>{child.name}</Text>
+                      <Text style={styles.childAge}>Age {child.age}</Text>
+                      {subtitle ? (
+                        <Text style={styles.childMeta} numberOfLines={2}>
+                          {subtitle}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Icon name="chevron-right" size={22} color={colors.textMuted} />
+                  </Pressable>
+                );
+              })
+            )}
           </Card>
         </Animated.View>
 
