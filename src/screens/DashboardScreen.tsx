@@ -35,10 +35,13 @@ import {
   AspectRatingSheet,
   WeeklyAspectProgressChart,
   AIInsightsCard,
+  SkeletonBox,
+  SkeletonShimmer,
 } from '../components';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { MissionProofModal } from '../components/missions/MissionProofModal';
 import { missionsService } from '../services/missionsService';
+import { analyticsService, type BsiSnapshot } from '../services/analyticsService';
 import type { ApiTodayMission, MissionDailyStatus } from '../types/mission.api';
 import {
   colors,
@@ -83,15 +86,6 @@ const MISSION_GRADIENT_MISSED = ['#FBF9F8', '#F9F5F3', '#F6F0ED'] as const;
 
 const MOCK_FAMILY_SCORE = 84; // 0-100 (percentage)
 
-/**
- * Per-child SDS (0–100) and week-over-week trend %.
- * Negative trend = performance dip; replace with API payload later.
- */
-const MOCK_SDS_BY_CHILD: Record<string, { percent: number; trend: number }> = {
-  '1': { percent: 78, trend: 5 },
-  '2': { percent: 61, trend: -4 },
-  '3': { percent: 89, trend: 8 },
-};
 
 type SdsMoodKey = 'win' | 'lose' | 'flat';
 
@@ -175,17 +169,10 @@ const WEEK_STRIP = [
   { id: 'sun', label: 'Sun', short: 'Su', score: 8.5 },
 ] as const;
 
-/** Pulsing placeholder tile shown while GET /behaviour/aspects is in flight. */
+/** Shimmer placeholder tile shown while GET /behaviour/aspects is in flight. */
 const AspectSkeletonTile = React.memo(function AspectSkeletonTile({ width }: { width: number }) {
-  const opacity = useSharedValue(0.45);
-  useEffect(() => {
-    opacity.value = withRepeat(withTiming(1, { duration: 750 }), -1, true);
-  }, [opacity]);
-  const pulseStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
   return (
-    <Animated.View
-      style={[styles.ratingAspectShadowWrapper, styles.skeletonTile, { width }, pulseStyle]}
-    >
+    <View style={[styles.ratingAspectShadowWrapper, styles.skeletonTile, { width }]}>
       <View style={styles.ratingAspectCard}>
         <View style={styles.skeletonTopAccent} />
         <View style={styles.ratingAspectTileBody}>
@@ -195,9 +182,95 @@ const AspectSkeletonTile = React.memo(function AspectSkeletonTile({ width }: { w
           <View style={styles.skeletonPtsLine} />
         </View>
       </View>
-    </Animated.View>
+      <SkeletonShimmer />
+    </View>
   );
 });
+
+/* ─── Section skeletons (match each card's layout/spacing) ─── */
+
+const CHART_SKELETON_BAR_HEIGHTS = [58, 92, 48, 116, 78, 104, 70];
+
+function MissionCardSkeleton() {
+  return (
+    <View style={[styles.shadowWrapper, styles.skCardPadMd]}>
+      <View style={styles.skRow}>
+        <SkeletonBox width={28} height={28} radius={8} />
+        <View style={styles.skFlex1}>
+          <SkeletonBox width="42%" height={10} />
+          <SkeletonBox width="58%" height={9} style={styles.skGap6} />
+        </View>
+      </View>
+      <View style={styles.skBlockMd}>
+        <SkeletonBox width="70%" height={16} />
+        <SkeletonBox width="100%" height={10} style={styles.skGapSm} />
+        <SkeletonBox width="94%" height={10} style={styles.skGap8} />
+        <SkeletonBox width="60%" height={10} style={styles.skGap8} />
+      </View>
+      <View style={styles.skButtonsRow}>
+        <SkeletonBox style={styles.skFlex1} height={38} radius={borderRadius.large} />
+        <SkeletonBox style={styles.skFlex1} height={38} radius={borderRadius.large} />
+      </View>
+      <SkeletonShimmer />
+    </View>
+  );
+}
+
+function BsiCardSkeleton() {
+  return (
+    <View style={[styles.shadowWrapper, styles.skCardPadMd]}>
+      <View style={styles.skRowBetween}>
+        <SkeletonBox width="34%" height={10} />
+        <SkeletonBox width={104} height={22} radius={borderRadius.full} />
+      </View>
+      <View style={[styles.skRowBetween, styles.skBlockMd]}>
+        <SkeletonBox width={104} height={34} radius={borderRadius.medium} />
+        <SkeletonBox width={84} height={14} />
+      </View>
+      <SkeletonBox width="66%" height={10} style={styles.skHintCentered} />
+      <SkeletonShimmer />
+    </View>
+  );
+}
+
+function ChartSkeleton() {
+  return (
+    <View style={[styles.shadowWrapper, styles.skCardPadLg]}>
+      <View style={[styles.skRowBetween, styles.skBlockMd0]}>
+        <SkeletonBox width="44%" height={14} />
+        <SkeletonBox width={64} height={10} />
+      </View>
+      <View style={styles.skBarsRow}>
+        {CHART_SKELETON_BAR_HEIGHTS.map((h, i) => (
+          <View key={i} style={styles.skBarCol}>
+            <SkeletonBox width={16} height={h} radius={borderRadius.small} />
+            <SkeletonBox width={18} height={8} />
+          </View>
+        ))}
+      </View>
+      <SkeletonShimmer />
+    </View>
+  );
+}
+
+function AiInsightsSkeleton() {
+  return (
+    <View style={[styles.shadowWrapper, styles.skCardPadLg]}>
+      <View style={[styles.skRow, styles.skBlockMd0]}>
+        <SkeletonBox width={36} height={36} radius={18} />
+        <SkeletonBox width="52%" height={14} />
+      </View>
+      <SkeletonBox width="100%" height={10} />
+      <SkeletonBox width="92%" height={10} style={styles.skGap8} />
+      <SkeletonBox width="76%" height={10} style={styles.skGap8} />
+      <View style={styles.skChipsRow}>
+        <SkeletonBox width={92} height={26} radius={borderRadius.full} />
+        <SkeletonBox width={108} height={26} radius={borderRadius.full} />
+      </View>
+      <SkeletonShimmer />
+    </View>
+  );
+}
 
 const DashboardScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -235,6 +308,11 @@ const DashboardScreen: React.FC = () => {
   const [aspectApiMaps, setAspectApiMaps] = useState<AspectApiIdMaps | null>(null);
   const [ratingAspects, setRatingAspects] = useState<RatingAspectDefinition[]>([]);
   const [aspectsLoading, setAspectsLoading] = useState(true);
+  const [bsiSnapshot, setBsiSnapshot] = useState<BsiSnapshot | null>(null);
+  // Initial-load skeleton flags (set false after first fetch; stay false on
+  // pull-to-refresh so refreshing never flashes skeletons over existing content).
+  const [missionLoading, setMissionLoading] = useState(true);
+  const [bsiLoading, setBsiLoading] = useState(true);
   const selectedChild = useMemo(
     () => children.find((c) => c.id === selectedChildId) ?? children[0],
     [children, selectedChildId]
@@ -259,6 +337,7 @@ const DashboardScreen: React.FC = () => {
     const studentUuid = selectedChild?.id;
     if (!studentUuid) {
       setTodayMission(null);
+      setMissionLoading(false);
       return;
     }
     try {
@@ -269,12 +348,36 @@ const DashboardScreen: React.FC = () => {
     } catch (err) {
       setTodayMission(null);
       showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 4000 });
+    } finally {
+      setMissionLoading(false);
     }
   }, [selectedChild?.id, showToast]);
 
   useEffect(() => {
     fetchTodayMission();
   }, [fetchTodayMission]);
+
+  // ── BSI score ────────────────────────────────────────────────────────────
+  const fetchBsi = useCallback(async () => {
+    const studentUuid = selectedChild?.id;
+    if (!studentUuid) {
+      setBsiSnapshot(null);
+      setBsiLoading(false);
+      return;
+    }
+    try {
+      setBsiSnapshot(await analyticsService.getBsi(studentUuid));
+    } catch (err) {
+      setBsiSnapshot(null);
+      showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 4000 });
+    } finally {
+      setBsiLoading(false);
+    }
+  }, [selectedChild?.id, showToast]);
+
+  useEffect(() => {
+    fetchBsi();
+  }, [fetchBsi]);
 
   const submitMissionLog = useCallback(
     async (status: MissionDailyStatus, proofUri?: string, note?: string) => {
@@ -385,8 +488,8 @@ const DashboardScreen: React.FC = () => {
   }, [fetchAspects]);
 
   const refreshDashboard = useCallback(
-    () => Promise.all([fetchAspects(), fetchTodayMission()]),
-    [fetchAspects, fetchTodayMission]
+    () => Promise.all([fetchAspects(), fetchTodayMission(), fetchBsi()]),
+    [fetchAspects, fetchTodayMission, fetchBsi]
   );
 
   const { refreshing, onRefresh } = usePullToRefresh(refreshDashboard);
@@ -487,10 +590,9 @@ const DashboardScreen: React.FC = () => {
   const confidencePercent = clamp(selectedChild?.confidenceIndicator ?? 0, 0, 100);
   const confidenceCF = confidencePercent / 100;
 
-  const sdsSnapshot = useMemo(() => {
-    const row = MOCK_SDS_BY_CHILD[selectedChild?.id ?? ''];
-    return row ?? { percent: 72, trend: 0 };
-  }, [selectedChild?.id]);
+  // Neutral fallback keeps sdsMood/derived styling valid while loading; the card
+  // itself only renders once bsiSnapshot is present (see render below).
+  const sdsSnapshot = bsiSnapshot ?? { percent: 0, trend: 0 };
 
   const sdsMood = useMemo(() => getSdsCardMood(sdsSnapshot.trend), [sdsSnapshot.trend]);
 
@@ -637,7 +739,9 @@ const DashboardScreen: React.FC = () => {
           </View>
         </View>
 
-        {todayMission ? (
+        {missionLoading ? (
+          <MissionCardSkeleton />
+        ) : todayMission ? (
         <Animated.View
           entering={FadeInDown.delay(0).springify().damping(18).stiffness(220)}
           style={styles.shadowWrapper}
@@ -768,6 +872,9 @@ const DashboardScreen: React.FC = () => {
         </Animated.View>
         ) : null}
 
+        {bsiLoading ? (
+          <BsiCardSkeleton />
+        ) : bsiSnapshot ? (
         <Animated.View
           entering={FadeInDown.delay(60).springify().damping(18).stiffness(220)}
           style={styles.shadowWrapper}
@@ -847,27 +954,36 @@ const DashboardScreen: React.FC = () => {
             </LinearGradient>
           </View>
         </Animated.View>
+        ) : null}
 
-        <Animated.View
-          entering={FadeInDown.delay(100).springify().damping(18).stiffness(220)}
-          style={[styles.shadowWrapper, styles.shadowWrapperHoriz]}
-        >
-          <View style={styles.sectionTight}>
-            <WeeklyAspectProgressChart
-              aspects={ratingAspects}
-              series={weeklyAspectProgressSeries}
-            />
-          </View>
-        </Animated.View>
+        {aspectsLoading ? (
+          <ChartSkeleton />
+        ) : (
+          <Animated.View
+            entering={FadeInDown.delay(100).springify().damping(18).stiffness(220)}
+            style={[styles.shadowWrapper, styles.shadowWrapperHoriz]}
+          >
+            <View style={styles.sectionTight}>
+              <WeeklyAspectProgressChart
+                aspects={ratingAspects}
+                series={weeklyAspectProgressSeries}
+              />
+            </View>
+          </Animated.View>
+        )}
 
-        <Animated.View
-          entering={FadeInDown.delay(140).springify().damping(18).stiffness(220)}
-          style={[styles.shadowWrapper, styles.shadowWrapperHoriz]}
-        >
-          <View style={styles.sectionTight}>
-            <AIInsightsCard payload={aiInsightsPayload} />
-          </View>
-        </Animated.View>
+        {aspectsLoading ? (
+          <AiInsightsSkeleton />
+        ) : (
+          <Animated.View
+            entering={FadeInDown.delay(140).springify().damping(18).stiffness(220)}
+            style={[styles.shadowWrapper, styles.shadowWrapperHoriz]}
+          >
+            <View style={styles.sectionTight}>
+              <AIInsightsCard payload={aiInsightsPayload} />
+            </View>
+          </Animated.View>
+        )}
       </ScrollView>
 
       <Modal
@@ -1928,6 +2044,67 @@ const styles = StyleSheet.create({
   skeletonTile: {
     backgroundColor: colors.surfaceMuted,
     borderColor: colors.border,
+  },
+  /* ─── Section skeleton layout atoms ─── */
+  skCardPadMd: {
+    padding: spacing.md,
+  },
+  skCardPadLg: {
+    padding: spacing.lg,
+  },
+  skRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  skRowBetween: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  skFlex1: {
+    flex: 1,
+    minWidth: 0,
+  },
+  skBlockMd: {
+    marginTop: spacing.md,
+  },
+  skBlockMd0: {
+    marginBottom: spacing.md,
+  },
+  skGap6: {
+    marginTop: 6,
+  },
+  skGap8: {
+    marginTop: 8,
+  },
+  skGapSm: {
+    marginTop: spacing.sm,
+  },
+  skButtonsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  skHintCentered: {
+    alignSelf: 'center',
+    marginTop: spacing.md,
+  },
+  skBarsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    height: 140,
+  },
+  skBarCol: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 6,
+  },
+  skChipsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
   },
   skeletonTopAccent: {
     height: 3,

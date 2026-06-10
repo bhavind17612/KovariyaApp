@@ -81,6 +81,8 @@ export const ENDPOINTS = {
     OVERVIEW: '/api/v1/analytics/overview',
     ASPECT_SCORES: '/api/v1/analytics/aspects',
     DAY_LOGS: '/api/v1/analytics/day-logs',
+    /** GET ?student_id=<uuid> — BSI score + week-over-week trend for a child */
+    BSI: '/api/v1/analytics/parent/bsi',
   },
 
   NOTIFICATIONS: {
