@@ -60,7 +60,10 @@ import {
   type AspectRatingPayload,
 } from '../data/aspectRating';
 
-import { getWeeklyAspectProgressSeries } from '../data/weeklyAspectProgress';
+import {
+  getWeeklyAspectProgressSeries,
+  type WeeklyAspectSeriesRow,
+} from '../data/weeklyAspectProgress';
 import { getAIInsightsForChild } from '../data/aiInsights';
 import { behaviourService } from '../services/behaviourService';
 import { languageService } from '../services/languageService';
@@ -307,6 +310,7 @@ const DashboardScreen: React.FC = () => {
   const [ratingLanguageId, setRatingLanguageId] = useState<number | undefined>(undefined);
   const [aspectApiMaps, setAspectApiMaps] = useState<AspectApiIdMaps | null>(null);
   const [ratingAspects, setRatingAspects] = useState<RatingAspectDefinition[]>([]);
+  const [weeklyAspectProgressSeries, setWeeklyAspectProgressSeries] = useState<WeeklyAspectSeriesRow[]>([]);
   const [aspectsLoading, setAspectsLoading] = useState(true);
   const [bsiSnapshot, setBsiSnapshot] = useState<BsiSnapshot | null>(null);
   // Initial-load skeleton flags (set false after first fetch; stay false on
@@ -321,11 +325,6 @@ const DashboardScreen: React.FC = () => {
   const selectedDay = useMemo(() => WEEK_STRIP.find((d) => d.id === selectedDayId) ?? WEEK_STRIP[0], [
     selectedDayId,
   ]);
-
-  const weeklyAspectProgressSeries = useMemo(
-    () => getWeeklyAspectProgressSeries(selectedChild?.id ?? ''),
-    [selectedChild?.id]
-  );
 
   const aiInsightsPayload = useMemo(
     () => getAIInsightsForChild(selectedChild?.id ?? ''),
@@ -480,16 +479,38 @@ const DashboardScreen: React.FC = () => {
         setRatingAspects(DASHBOARD_RATING_ASPECTS);
         setAspectsLoading(false);
       });
-  }, [ratingLang]);
+  }, [ratingLang, selectedChild?.id]);
 
   // Initial load + re-fetch whenever the language preference changes.
   useEffect(() => {
     fetchAspects();
   }, [fetchAspects]);
 
+  const fetchWeeklyAspectProgress = useCallback(() => {
+    const studentUuid = selectedChild?.id;
+    if (!studentUuid) {
+      setWeeklyAspectProgressSeries([]);
+      return Promise.resolve();
+    }
+
+    return behaviourService.getWeeklyAspectProgress(studentUuid)
+      .then((series) => {
+        setWeeklyAspectProgressSeries(
+          series.length > 0 ? series : getWeeklyAspectProgressSeries(studentUuid)
+        );
+      })
+      .catch(() => {
+        setWeeklyAspectProgressSeries(getWeeklyAspectProgressSeries(studentUuid));
+      });
+  }, [selectedChild?.id]);
+
+  useEffect(() => {
+    fetchWeeklyAspectProgress();
+  }, [fetchWeeklyAspectProgress]);
+
   const refreshDashboard = useCallback(
-    () => Promise.all([fetchAspects(), fetchTodayMission(), fetchBsi()]),
-    [fetchAspects, fetchTodayMission, fetchBsi]
+    () => Promise.all([fetchAspects(), fetchWeeklyAspectProgress(), fetchTodayMission(), fetchBsi()]),
+    [fetchAspects, fetchWeeklyAspectProgress, fetchTodayMission, fetchBsi]
   );
 
   const { refreshing, onRefresh } = usePullToRefresh(refreshDashboard);

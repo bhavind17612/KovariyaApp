@@ -8,7 +8,13 @@ import type {
   AspectApiIdMaps,
   BehaviourEntryRequest,
   BehaviourEntryResponse,
+  ApiWeeklyAspectProgressResponse,
 } from '../types/behaviour';
+import type { WeeklyAspectSeriesRow } from '../data/weeklyAspectProgress';
+
+function clampPercent(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
 
 class BehaviourService {
   /**
@@ -56,6 +62,55 @@ class BehaviourService {
     }
 
     return { apiAspects, maps };
+  }
+
+  /**
+   * Fetches weekly Mon-Sun progress values for the dashboard line chart.
+   *
+   * Expected payload:
+   * {
+   *   "student_id": "<uuid>",
+   *   "week_start": "2026-06-08",
+   *   "week_end": "2026-06-14",
+   *   "days": [
+   *     { "id": "mon", "label": "Mon" },
+   *     { "id": "tue", "label": "Tue" },
+   *     { "id": "wed", "label": "Wed" },
+   *     { "id": "thu", "label": "Thu" },
+   *     { "id": "fri", "label": "Fri" },
+   *     { "id": "sat", "label": "Sat" },
+   *     { "id": "sun", "label": "Sun" }
+   *   ],
+   *   "series": [
+   *     { "aspectId": "respect", "values": [72, 76, 80, 78, 82, 85, 84] }
+   *   ]
+   * }
+   */
+  async getWeeklyAspectProgress(studentUuid: string): Promise<WeeklyAspectSeriesRow[]> {
+    const response = await api.get<ApiWeeklyAspectProgressResponse>(
+      ENDPOINTS.BEHAVIOUR.WEEKLY_ASPECT_PROGRESS,
+      { params: { student_id: studentUuid } },
+    );
+
+    const series = response.data.data?.series;
+    if (!Array.isArray(series)) {
+      return [];
+    }
+
+    return series
+      .filter((row): row is WeeklyAspectSeriesRow =>
+        typeof row === 'object' &&
+        row !== null &&
+        typeof row.aspectId === 'string' &&
+        Array.isArray(row.values) &&
+        row.values.length === 7
+      )
+      .map((row) => ({
+        aspectId: row.aspectId,
+        values: row.values.map((value) =>
+          typeof value === 'number' && Number.isFinite(value) ? clampPercent(value) : 0
+        ),
+      }));
   }
 
   /** Fetches reason chips for a single aspect from GET /aspects/:slug/chips. */

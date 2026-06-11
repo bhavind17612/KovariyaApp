@@ -22,6 +22,28 @@ export interface ApiAspectsResponse {
   language_id: number;
 }
 
+/** Day label metadata returned with the weekly aspect progress chart payload. */
+export interface ApiWeeklyAspectProgressDay {
+  id: string;
+  label: string;
+}
+
+/** One chart line returned by GET /behaviour/aspects/weekly-progress. */
+export interface ApiWeeklyAspectProgressSeriesRow {
+  aspectId: string;
+  /** Seven values (0-100), one per day in `days` order. */
+  values: number[];
+}
+
+/** Full body returned by GET /behaviour/aspects/weekly-progress. */
+export interface ApiWeeklyAspectProgressResponse {
+  student_id: string;
+  week_start: string;
+  week_end: string;
+  days: ApiWeeklyAspectProgressDay[];
+  series: ApiWeeklyAspectProgressSeriesRow[];
+}
+
 /** One reason chip as returned by GET /aspects/:slug/chips. */
 export interface AspectReasonChip {
   id: number;

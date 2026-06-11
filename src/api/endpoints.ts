@@ -98,6 +98,8 @@ export const ENDPOINTS = {
   BEHAVIOUR: {
     /** GET — returns aspects with their ratings and reason chips */
     ASPECTS: '/api/v1/behaviour/aspects',
+    /** GET ?student_id=<uuid> — weekly Mon-Sun progress values per aspect */
+    WEEKLY_ASPECT_PROGRESS: '/api/v1/behaviour/aspects/weekly-progress',
     ASPECT_CHIPS: (slug: string) => `/api/v1/behaviour/aspects/${encodeURIComponent(slug)}/chips`,
     /** POST — submit a behaviour log entry */
     ENTRIES: '/api/v1/behaviour/entries',
