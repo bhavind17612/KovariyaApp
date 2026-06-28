@@ -83,6 +83,9 @@ export default function MissionDetailScreen({ route }: Props) {
   const typeVisual = missionTypeChipStyle(mission.missionType);
   const isMissionComplete = mission.progressPercent >= 100;
 
+  const rewardBadge = mission.rewardBadge;
+  const rewardBadgeImage = rewardBadge ? BADGE_REWARD_IMAGES[rewardBadge.key] : undefined;
+
   const doneCount = useMemo(
     () => mission.completionHistory.filter((entry) => entry.status === 'done').length,
     [mission.completionHistory]
@@ -225,39 +228,43 @@ export default function MissionDetailScreen({ route }: Props) {
               </View>
             </View>
 
-            <LinearGradient
-              colors={
-                isMissionComplete
-                  ? [colors.mintSoft, 'rgba(255,255,255,0.96)']
-                  : [colors.peachSoft, 'rgba(255,255,255,0.96)']
-              }
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={[
-                styles.rewardPanel,
-                isMissionComplete ? styles.rewardPanelEarned : styles.rewardPanelLocked,
-              ]}
-            >
-              <View style={styles.rewardPanelCopy}>
-                <Text
-                  style={[
-                    styles.rewardPanelKicker,
-                    { color: isMissionComplete ? colors.growth : colors.accent },
-                  ]}
-                >
-                  {isMissionComplete ? 'Badge earned' : 'Reward on completion'}
-                </Text>
-                <Text style={styles.rewardPanelTitle}>{mission.rewardBadge.name} Badge</Text>
-                <Text style={styles.rewardPanelDesc}>{mission.rewardBadge.description}</Text>
-              </View>
-              <View style={styles.rewardBadgeFrame}>
-                <Image
-                  source={BADGE_REWARD_IMAGES[mission.rewardBadge.key]}
-                  style={styles.rewardBadgeImage}
-                  resizeMode="contain"
-                />
-              </View>
-            </LinearGradient>
+            {rewardBadge ? (
+              <LinearGradient
+                colors={
+                  isMissionComplete
+                    ? [colors.mintSoft, 'rgba(255,255,255,0.96)']
+                    : [colors.peachSoft, 'rgba(255,255,255,0.96)']
+                }
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={[
+                  styles.rewardPanel,
+                  isMissionComplete ? styles.rewardPanelEarned : styles.rewardPanelLocked,
+                ]}
+              >
+                <View style={styles.rewardPanelCopy}>
+                  <Text
+                    style={[
+                      styles.rewardPanelKicker,
+                      { color: isMissionComplete ? colors.growth : colors.accent },
+                    ]}
+                  >
+                    {isMissionComplete ? 'Badge earned' : 'Reward on completion'}
+                  </Text>
+                  <Text style={styles.rewardPanelTitle}>{rewardBadge.name} Badge</Text>
+                  <Text style={styles.rewardPanelDesc}>{rewardBadge.description}</Text>
+                </View>
+                {rewardBadgeImage ? (
+                  <View style={styles.rewardBadgeFrame}>
+                    <Image
+                      source={rewardBadgeImage}
+                      style={styles.rewardBadgeImage}
+                      resizeMode="contain"
+                    />
+                  </View>
+                ) : null}
+              </LinearGradient>
+            ) : null}
           </View>
         </Card>
 

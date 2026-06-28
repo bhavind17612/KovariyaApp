@@ -189,6 +189,8 @@ const ProfileScreen: React.FC = () => {
   const [childrenLoading, setChildrenLoading] = useState(true);
   const hasFetchedChildren = useRef(false);
   const [addChildVisible, setAddChildVisible] = useState(false);
+  // When set, the child modal opens in edit mode for this child.
+  const [editChild, setEditChild] = useState<Child | null>(null);
 
   // ── Language preference ────────────────────────────────────────────────────
   const [langPickerVisible, setLangPickerVisible] = useState(false);
@@ -241,8 +243,28 @@ const ProfileScreen: React.FC = () => {
     Alert.alert('opened ', id);
   }, []);
 
-  const onChildAdded = useCallback((child: Child) => {
-    setChildrenList((prev) => [child, ...prev]);
+  // Handles both add (new child prepended) and edit (existing child replaced).
+  const onChildSubmitted = useCallback((child: Child) => {
+    setChildrenList((prev) =>
+      prev.some((c) => c.id === child.id)
+        ? prev.map((c) => (c.id === child.id ? child : c))
+        : [child, ...prev]
+    );
+  }, []);
+
+  const openAddChild = useCallback(() => {
+    setEditChild(null);
+    setAddChildVisible(true);
+  }, []);
+
+  const openEditChild = useCallback((child: Child) => {
+    setEditChild(child);
+    setAddChildVisible(true);
+  }, []);
+
+  const closeChildModal = useCallback(() => {
+    setAddChildVisible(false);
+    setEditChild(null);
   }, []);
 
   // ── Fetch children from API on focus ─────────────────────────────────────
@@ -370,7 +392,7 @@ const ProfileScreen: React.FC = () => {
                 <Text style={styles.sectionTitle}>My children</Text>
               </View>
               <Pressable
-                onPress={() => setAddChildVisible(true)}
+                onPress={openAddChild}
                 style={({ pressed }) => [styles.iconCircleBtn, pressed && styles.pressedOpacity]}
                 accessibilityRole="button"
                 accessibilityLabel="Add child"
@@ -397,13 +419,14 @@ const ProfileScreen: React.FC = () => {
                 return (
                   <Pressable
                     key={child.id}
+                    onPress={() => openEditChild(child)}
                     style={({ pressed }) => [
                       styles.childRow,
                       index < childrenList.length - 1 && styles.childRowBorder,
                       pressed && styles.pressedOpacity,
                     ]}
                     accessibilityRole="button"
-                    accessibilityLabel={`${child.name}, age ${child.age}`}
+                    accessibilityLabel={`Edit ${child.name}, age ${child.age}`}
                   >
                     <View style={styles.childAvatar}>
                       <InitialAvatar
@@ -486,8 +509,9 @@ const ProfileScreen: React.FC = () => {
 
       <AddChildModal
         visible={addChildVisible}
-        onClose={() => setAddChildVisible(false)}
-        onSubmit={onChildAdded}
+        onClose={closeChildModal}
+        onSubmit={onChildSubmitted}
+        child={editChild}
       />
 
       <LanguagePickerSheet
@@ -719,6 +743,31 @@ const styles = StyleSheet.create({
   childInfo: {
     flex: 1,
     minWidth: 0,
+  },
+  // Neutral fill so the loading placeholders are actually visible.
+  skeletonCircle: {
+    backgroundColor: colors.surfaceMuted,
+  },
+  skeletonBar: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 6,
+  },
+  emptyChildren: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xl,
+    gap: spacing.xs,
+  },
+  emptyChildrenText: {
+    ...textStyles.bodyLarge,
+    fontWeight: '700',
+    color: colors.ink,
+    marginTop: spacing.sm,
+  },
+  emptyChildrenSubtext: {
+    ...textStyles.caption,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
   childName: {
     ...textStyles.bodyLarge,

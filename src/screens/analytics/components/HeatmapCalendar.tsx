@@ -3,17 +3,19 @@ import { View, Text, Pressable, StyleSheet, useWindowDimensions, Platform } from
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
-import { Card } from '../../../components';
+import { Card, SkeletonBox, SkeletonShimmer } from '../../../components';
 import { colors, spacing, textStyles, borderRadius } from '../../../theme';
 import { analyticsStyles as shared } from '../styles';
 import { heatmapColor } from '../utils';
-import type { DailyBehaviourScore } from '../../../data/analyticsData';
+import type { HeatmapDay } from '../../../types/heatmap';
 
 /* ═══════════════════════════════════════════════════════════════════ */
 /*  Props                                                             */
 /* ═══════════════════════════════════════════════════════════════════ */
 interface HeatmapCalendarProps {
-	data: DailyBehaviourScore[];
+	data: HeatmapDay[];
+	loading: boolean;
+	error: boolean;
 	year: number;
 	month: number;
 	onPrevMonth: () => void;
@@ -42,6 +44,8 @@ const LEGEND_ITEMS = [
 /* ═══════════════════════════════════════════════════════════════════ */
 const HeatmapCalendar: React.FC<HeatmapCalendarProps> = ({
 	data,
+	loading,
+	error,
 	year,
 	month,
 	onPrevMonth,
@@ -59,14 +63,17 @@ const HeatmapCalendar: React.FC<HeatmapCalendarProps> = ({
 	const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
 
 	// Build grid with leading empties
-	const cells: (DailyBehaviourScore | null)[] = [];
+	const cells: (HeatmapDay | null)[] = [];
 	for (let i = 0; i < firstDay; i++) cells.push(null);
 	data.forEach((d) => cells.push(d));
 
-	const rows: (DailyBehaviourScore | null)[][] = [];
+	const rows: (HeatmapDay | null)[][] = [];
 	for (let i = 0; i < cells.length; i += 7) {
 		rows.push(cells.slice(i, i + 7));
 	}
+
+	const showSkeleton = loading && data.length === 0;
+	const showError = error && data.length === 0;
 
 	return (
 		<Animated.View
@@ -107,45 +114,63 @@ const HeatmapCalendar: React.FC<HeatmapCalendarProps> = ({
 						))}
 					</View>
 
-					{rows.map((row, ri) => (
-						<View key={ri} style={[s.heatmapRow, { gap: cellGap, marginBottom: cellGap }]}>
-							{row.map((cell, ci) => {
-								if (!cell) {
-									return <View key={`empty-${ri}-${ci}`} style={[s.emptyCell, { width: cellSize, height: cellSize }]} />;
-								}
-								const bg = heatmapColor(cell.score);
-								const dayNum = parseInt(cell.date.split('-')[2], 10);
-								const isToday = cell.date === new Date().toISOString().split('T')[0];
-								return (
-									<Pressable
-										key={cell.date}
-										onPress={() => onDayPress?.(cell.date, cell.score)}
-										android_ripple={{ color: 'rgba(255,255,255,0.35)', borderless: false }}
-										style={({ pressed }) => [
-											s.dayCell,
-											{
-												width: cellSize,
-												height: cellSize,
-												backgroundColor: bg,
-											},
-											isToday && s.dayCellToday,
-											pressed && s.dayCellPressed,
-										]}
-										accessibilityRole="button"
-										accessibilityLabel={`View logs for ${cell.date}`}
-									>
-										<Text style={[s.dayCellText, cell.score === null && s.dayCellTextMuted]}>
-											{dayNum}
-										</Text>
-									</Pressable>
-								);
-							})}
-							{row.length < 7 &&
-								Array.from({ length: 7 - row.length }).map((_, ti) => (
-									<View key={`pad-${ri}-${ti}`} style={[s.emptyCell, { width: cellSize, height: cellSize }]} />
-								))}
+					{showSkeleton ? (
+						<View style={s.skeletonGrid}>
+							{Array.from({ length: 6 }).map((_, ri) => (
+								<View key={`sk-${ri}`} style={[s.heatmapRow, { gap: cellGap, marginBottom: cellGap }]}>
+									{Array.from({ length: 7 }).map((_, ci) => (
+										<SkeletonBox key={`sk-${ri}-${ci}`} width={cellSize} height={cellSize} radius={8} />
+									))}
+								</View>
+							))}
+							<SkeletonShimmer />
 						</View>
-					))}
+					) : showError ? (
+						<View style={s.stateBody}>
+							<Icon name="cloud-off" size={26} color={colors.textMuted} />
+							<Text style={s.stateText}>Could not load the heatmap. Pull to refresh.</Text>
+						</View>
+					) : (
+						rows.map((row, ri) => (
+							<View key={ri} style={[s.heatmapRow, { gap: cellGap, marginBottom: cellGap }]}>
+								{row.map((cell, ci) => {
+									if (!cell) {
+										return <View key={`empty-${ri}-${ci}`} style={[s.emptyCell, { width: cellSize, height: cellSize }]} />;
+									}
+									const bg = heatmapColor(cell.score);
+									const dayNum = parseInt(cell.date.split('-')[2], 10);
+									const isToday = cell.date === new Date().toISOString().split('T')[0];
+									return (
+										<Pressable
+											key={cell.date}
+											onPress={() => onDayPress?.(cell.date, cell.score)}
+											android_ripple={{ color: 'rgba(255,255,255,0.35)', borderless: false }}
+											style={({ pressed }) => [
+												s.dayCell,
+												{
+													width: cellSize,
+													height: cellSize,
+													backgroundColor: bg,
+												},
+												isToday && s.dayCellToday,
+												pressed && s.dayCellPressed,
+											]}
+											accessibilityRole="button"
+											accessibilityLabel={`View logs for ${cell.date}`}
+										>
+											<Text style={[s.dayCellText, cell.score === null && s.dayCellTextMuted]}>
+												{dayNum}
+											</Text>
+										</Pressable>
+									);
+								})}
+								{row.length < 7 &&
+									Array.from({ length: 7 - row.length }).map((_, ti) => (
+										<View key={`pad-${ri}-${ti}`} style={[s.emptyCell, { width: cellSize, height: cellSize }]} />
+									))}
+							</View>
+						))
+					)}
 				</View>
 
 				{/* Legend */}
@@ -194,6 +219,25 @@ const s = StyleSheet.create({
 		backgroundColor: 'rgba(255,255,255,0.96)',
 		borderWidth: StyleSheet.hairlineWidth,
 		borderColor: 'rgba(17,17,17,0.05)',
+	},
+	skeletonGrid: {
+		position: 'relative',
+		overflow: 'hidden',
+		borderRadius: borderRadius.medium,
+	},
+	stateBody: {
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: spacing.sm,
+		paddingVertical: spacing.xl,
+		paddingHorizontal: spacing.lg,
+	},
+	stateText: {
+		...textStyles.bodyMedium,
+		fontSize: 13,
+		color: colors.textSecondary,
+		textAlign: 'center',
+		lineHeight: 19,
 	},
 	heatmapHeader: {
 		flexDirection: 'row',

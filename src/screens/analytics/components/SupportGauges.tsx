@@ -7,29 +7,65 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, textStyles, borderRadius } from '../../../theme';
 import { scoreColor } from '../utils';
 import { SemiCircleGauge, AnimatedNumber } from './gauges';
-import type {
-	FamilyScoreData,
-	TrustMeterData,
-	ParentConsistencyData,
-} from '../../../data/analyticsData';
+import { SkeletonBox, SkeletonShimmer } from '../../../components';
+import type { ScoreCards } from '../../../types/scoreCards';
 
 /* ═══════════════════════════════════════════════════════════════════ */
 /*  Props                                                             */
 /* ═══════════════════════════════════════════════════════════════════ */
 interface SupportGaugesProps {
-	familyScore: FamilyScoreData;
-	trust: TrustMeterData;
-	parentConsistency: ParentConsistencyData;
+	data: ScoreCards | null;
+	loading: boolean;
+	error: boolean;
 }
 
 /* ═══════════════════════════════════════════════════════════════════ */
 /*  Component                                                         */
 /* ═══════════════════════════════════════════════════════════════════ */
-const SupportGauges: React.FC<SupportGaugesProps> = ({
-	familyScore: fs,
-	trust,
-	parentConsistency: pc,
-}) => {
+const SupportGauges: React.FC<SupportGaugesProps> = ({ data, loading, error }) => {
+	/* ── Loading skeleton ── */
+	if (loading && !data) {
+		return (
+			<Animated.View
+				entering={FadeInDown.delay(80).springify().damping(18).stiffness(220)}
+				style={[s.shadowWrapper, { marginBottom: spacing.sm }]}
+			>
+				<View style={s.kpiRow}>
+					{[0, 1, 2].map((i) => (
+						<View key={i} style={s.kpiCard}>
+							{i > 0 && <View style={s.kpiCardDivider} />}
+							<View style={s.kpiCardBody}>
+								<SkeletonBox width={72} height={40} radius={8} />
+								<SkeletonBox width={40} height={11} radius={4} style={{ marginTop: spacing.sm }} />
+								<SkeletonBox width={60} height={8} radius={4} style={{ marginTop: 6 }} />
+								<SkeletonBox width={56} height={18} radius={borderRadius.full} style={{ marginTop: 8 }} />
+							</View>
+						</View>
+					))}
+				</View>
+				<SkeletonShimmer />
+			</Animated.View>
+		);
+	}
+
+	/* ── Error / empty state ── */
+	if (!data) {
+		return (
+			<Animated.View
+				entering={FadeInDown.delay(80).springify().damping(18).stiffness(220)}
+				style={[s.shadowWrapper, { marginBottom: spacing.sm }]}
+			>
+				<View style={s.emptyBody}>
+					<Icon name={error ? 'cloud-off' : 'insights'} size={28} color={colors.textMuted} />
+					<Text style={s.emptyText}>
+						{error ? 'Could not load score cards. Pull to refresh.' : 'No score cards available yet.'}
+					</Text>
+				</View>
+			</Animated.View>
+		);
+	}
+
+	const { fs, trust, pc } = data;
 	const gauges = [
 		{
 			value: fs.score,
@@ -37,7 +73,7 @@ const SupportGauges: React.FC<SupportGaugesProps> = ({
 			sublabel: fs.subtitle,
 			delay: 100,
 			trendIcon: fs.trend >= 0 ? 'trending-up' : 'trending-down',
-			trendText: `${fs.trend}%`,
+			trendText: fs.trend > 0 ? `+${fs.trend}%` : `${fs.trend}%`,
 			trendColor: fs.trend >= 0 ? colors.growth : colors.error,
 			labelColor: undefined,
 			accentColor: colors.primary,
@@ -61,7 +97,7 @@ const SupportGauges: React.FC<SupportGaugesProps> = ({
 			sublabel: pc.subtitle,
 			delay: 300,
 			trendIcon: pc.trend >= 0 ? 'trending-up' : 'trending-down',
-			trendText: `${pc.trend}%`,
+			trendText: pc.trend > 0 ? `+${pc.trend}%` : `${pc.trend}%`,
 			trendColor: pc.trend >= 0 ? colors.growth : colors.error,
 			labelColor: undefined,
 			accentColor: colors.growth,
@@ -210,5 +246,19 @@ const s = StyleSheet.create({
 		fontSize: 10,
 		fontWeight: '700',
 		letterSpacing: 0.1,
+	},
+	emptyBody: {
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: spacing.sm,
+		paddingVertical: spacing.xl,
+		paddingHorizontal: spacing.lg,
+	},
+	emptyText: {
+		...textStyles.bodyMedium,
+		fontSize: 13,
+		color: colors.textSecondary,
+		textAlign: 'center',
+		lineHeight: 19,
 	},
 });

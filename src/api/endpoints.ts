@@ -34,6 +34,20 @@ export const ENDPOINTS = {
   STUDENTS: {
     LIST: '/api/v1/students',
     ONBOARDING: '/api/v1/students/onboarding',
+    /** GET — full detail for a single student */
+    DETAIL: (uuid: string) => `/api/v1/students/${uuid}`,
+    /** PATCH — update a single student's details */
+    UPDATE: (uuid: string) => `/api/v1/students/${uuid}`,
+    /** GET ?period=weekly|monthly — Behaviour Score Index for a student */
+    BSI: (studentUuid: string) => `/api/v1/students/${studentUuid}/bsi`,
+    /** GET ?period=weekly|monthly — per-aspect scores + trend for a student */
+    ASPECT_SCORES: (studentUuid: string) => `/api/v1/students/${studentUuid}/aspect-scores`,
+    /** GET ?year=<YYYY>&month=<1-12> — daily behaviour score heatmap for a month */
+    DBS_HEATMAP: (studentUuid: string) => `/api/v1/students/${studentUuid}/dbs-heatmap`,
+    /** GET ?period=weekly|monthly — BSI vs Parent Consistency trend series */
+    PROGRESS_TRENDS: (studentUuid: string) => `/api/v1/students/${studentUuid}/progress-trends`,
+    /** GET ?period=weekly|monthly — activity snapshot counters */
+    SUMMARY_STATS: (studentUuid: string) => `/api/v1/students/${studentUuid}/summary-stats`,
   },
 
   GOALS: {
@@ -83,6 +97,10 @@ export const ENDPOINTS = {
     DAY_LOGS: '/api/v1/analytics/day-logs',
     /** GET ?student_id=<uuid> — BSI score + week-over-week trend for a child */
     BSI: '/api/v1/analytics/parent/bsi',
+    /** GET ?student_id=<uuid> — Family Score, Trust Meter & Parent Consistency cards */
+    SCORE_CARDS: '/api/v1/analytics/parent/score-cards',
+    /** GET ?language=<code> — AI guidance, strengths/weaknesses & badges for a child */
+    INSIGHTS: (studentUuid: string) => `/api/v1/analytics/${studentUuid}/insights`,
   },
 
   NOTIFICATIONS: {
@@ -95,11 +113,29 @@ export const ENDPOINTS = {
     LIST: '/api/v1/schools',
   },
 
+  AI: {
+    /** GET ?language=<code> — the latest published parent-weekly summary for a child */
+    PARENT_WEEKLY: (studentUuid: string) =>
+      `/api/v1/ai/summaries/parent-weekly/${studentUuid}`,
+    /** POST — mark a summary as read by the parent */
+    MARK_READ: (summaryUuid: string) => `/api/v1/ai/summaries/${summaryUuid}/read`,
+  },
+
+  REWARDS: {
+    /** GET — active rewards/badges a child can earn */
+    ACTIVE: '/api/v1/rewards/active',
+  },
+
+  TUTORIALS: {
+    /** GET — parent-facing tutorial videos */
+    PARENT: '/api/v1/tutorials/parent',
+  },
+
   BEHAVIOUR: {
     /** GET — returns aspects with their ratings and reason chips */
     ASPECTS: '/api/v1/behaviour/aspects',
     /** GET ?student_id=<uuid> — weekly Mon-Sun progress values per aspect */
-    WEEKLY_ASPECT_PROGRESS: '/api/v1/behaviour/aspects/weekly-progress',
+    WEEKLY_ASPECT_PROGRESS: '/api/v1/analytics/student/weekly-progress',
     ASPECT_CHIPS: (slug: string) => `/api/v1/behaviour/aspects/${encodeURIComponent(slug)}/chips`,
     /** POST — submit a behaviour log entry */
     ENTRIES: '/api/v1/behaviour/entries',

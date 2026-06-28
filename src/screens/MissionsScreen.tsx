@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StatusBar as RNStatusBar, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StatusBar as RNStatusBar, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { setStatusBarStyle } from 'expo-status-bar';
 import { useFocusEffect } from '@react-navigation/native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { AppGradientHeader, AppRefreshControl, Button } from '../components';
+import { AppGradientHeader, AppRefreshControl, Button, MissionListSkeleton } from '../components';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { useToast } from '../context/ToastContext';
 import {
@@ -164,9 +164,7 @@ export default function MissionsScreen({ navigation }: Props) {
 			<AppGradientHeader title="Missions" subtitle="Assigned by your mentor" />
 
 			{loading ? (
-				<View style={styles.centeredState}>
-					<ActivityIndicator size="large" color={colors.primary} />
-				</View>
+				<MissionListSkeleton />
 			) : error ? (
 				<View style={styles.centeredState}>
 					<Text style={styles.errorText}>Could not load missions. Please check your connection.</Text>
@@ -194,6 +192,17 @@ export default function MissionsScreen({ navigation }: Props) {
 				showsVerticalScrollIndicator={false}
 				refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
 			>
+				{missions.length === 0 ? (
+					<View style={styles.emptyState}>
+						<View style={styles.emptyIconOrb}>
+							<Icon name="flag" size={30} color={colors.primary} />
+						</View>
+						<Text style={styles.emptyTitle}>No missions yet</Text>
+						<Text style={styles.emptySubtitle}>
+							Missions assigned by your mentor will show up here. Pull down to refresh.
+						</Text>
+					</View>
+				) : null}
 				{missions.map((mission, index) => {
 					const typeVisual = missionTypeChipStyle(mission.missionType);
 					const lifecycle = resolveLifecycleStatus(mission);
@@ -355,6 +364,33 @@ const styles = StyleSheet.create({
 		color: colors.textSecondary,
 		textAlign: 'center',
 		lineHeight: 22,
+	},
+	emptyState: {
+		alignItems: 'center',
+		justifyContent: 'center',
+		paddingVertical: spacing.xxl,
+		paddingHorizontal: spacing.lg,
+		gap: spacing.sm,
+	},
+	emptyIconOrb: {
+		width: 64,
+		height: 64,
+		borderRadius: 32,
+		backgroundColor: colors.lavenderSoft,
+		alignItems: 'center',
+		justifyContent: 'center',
+		marginBottom: spacing.xs,
+	},
+	emptyTitle: {
+		...textStyles.headingMedium,
+		color: colors.ink,
+		fontWeight: '800',
+	},
+	emptySubtitle: {
+		...textStyles.bodyMedium,
+		color: colors.textSecondary,
+		textAlign: 'center',
+		lineHeight: 21,
 	},
 	retryBtn: {
 		paddingVertical: spacing.sm,

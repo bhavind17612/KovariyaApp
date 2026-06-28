@@ -1,12 +1,15 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Image,
   Platform,
+  Pressable,
   ScrollView,
   StatusBar as RNStatusBar,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { setStatusBarStyle } from 'expo-status-bar';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,7 +23,13 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
-import { AppGradientHeader, Card } from '../components';
+import Icon from 'react-native-vector-icons/MaterialIcons';
+import { AppGradientHeader, AppRefreshControl, Card, SkeletonBox, SkeletonShimmer } from '../components';
+import { usePullToRefresh } from '../hooks/usePullToRefresh';
+import { useToast } from '../context/ToastContext';
+import { rewardsService } from '../services/rewardsService';
+import { getDisplayMessage } from '../utils/errorParser';
+import type { Reward } from '../types/reward';
 import {
   borderRadius,
   colors,
@@ -28,148 +37,178 @@ import {
   spacing,
   textStyles,
 } from '../theme';
-import Icon from 'react-native-vector-icons/MaterialIcons';
 
-type BadgeData = {
-  id: string;
-  name: string;
-  image: any;
-  earned: boolean;
-  earnedDate?: string;
-  description: string;
-};
+/* ─── Reward image (remote, with graceful fallback) ─── */
 
-// We mock some data using the two available images.
-const BADGES: BadgeData[] = [
-  {
-    id: 'b1',
-    name: 'Respect',
-    image: require('../../assets/badges/respect.webp'),
-    earned: true,
-    earnedDate: 'Nov 12, 2023',
-    description: 'Awarded for showing outstanding respect towards peers and teachers.',
-  },
-  {
-    id: 'b2',
-    name: 'Responsibility',
-    image: require('../../assets/badges/responsibility.webp'),
-    earned: true,
-    earnedDate: 'Oct 05, 2023',
-    description: 'Consistently completes tasks and takes ownership of actions.',
-  },
-  {
-    id: 'b3',
-    name: 'Teamwork',
-    image: require('../../assets/badges/respect.webp'), // reusing image for demo
-    earned: false,
-    description: 'Collaborates well with others to achieve common goals.',
-  },
-  {
-    id: 'b4',
-    name: 'Leadership',
-    image: require('../../assets/badges/responsibility.webp'), // reusing image for demo
-    earned: false,
-    description: 'Demonstrates ability to guide and inspire peers positively.',
-  },
-];
+function RewardImage({ uri, earned }: { uri: string | null; earned: boolean }) {
+  const [failed, setFailed] = useState(false);
+  if (!uri || failed) {
+    return (
+      <View style={styles.imageFallback}>
+        <Icon name="emoji-events" size={64} color={earned ? colors.accent : colors.primary} />
+      </View>
+    );
+  }
+  return (
+    <Animated.Image
+      entering={FadeIn.duration(450)}
+      source={{ uri }}
+      style={styles.badgeImage}
+      resizeMode="cover"
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
-type BadgeTileProps = {
-  badge: BadgeData;
+/* ─── Reward tile ─── */
+
+type RewardTileProps = {
+  reward: Reward;
   index: number;
 };
 
-const BadgeTile: React.FC<BadgeTileProps> = ({ badge, index }) => {
+const RewardTile: React.FC<RewardTileProps> = ({ reward, index }) => {
   const shineProgress = useSharedValue(0);
 
+  // A slow sweep across every tile makes the rewards feel coveted/desirable.
   useEffect(() => {
-    if (!badge.earned) {
-      return;
-    }
-
     shineProgress.value = withDelay(
-      600 + index * 180,
+      500 + index * 160,
       withRepeat(
-        withTiming(1, {
-          duration: 1600,
-          easing: Easing.inOut(Easing.cubic),
-        }),
+        withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.cubic) }),
         -1,
         false
       )
     );
-  }, [badge.earned, index, shineProgress]);
+  }, [index, shineProgress]);
 
   const shineStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: -90 + shineProgress.value * 180 },
-      { rotate: '22deg' },
-    ],
+    // Fade in toward the middle of the sweep, out at the edges.
+    opacity: 1 - Math.abs(shineProgress.value - 0.5) * 2,
+    transform: [{ translateX: -100 + shineProgress.value * 200 }, { rotate: '22deg' }],
   }));
 
   return (
     <Animated.View
-      entering={FadeInDown.delay(150 + index * 50)
+      entering={FadeInDown.delay(120 + index * 70)
         .springify()
         .damping(18)
         .stiffness(220)}
-      style={[styles.badgeWrapper, !badge.earned && styles.lockedBadgeWrapper]}
+      style={styles.tileWrapper}
     >
-      <Card
-        variant="elevated"
-        padding={0}
-        style={badge.earned ? styles.badgeCard : styles.lockedBadgeCard}
-      >
-        <View style={[styles.imageFrame, badge.earned ? styles.earnedImageFrame : styles.lockedImageFrame]}>
-          <Animated.Image
-            entering={FadeIn.duration(800).delay(250 + index * 80)}
-            source={badge.image}
-            style={[styles.badgeImage, !badge.earned && styles.lockedImage]}
-            resizeMode="contain"
-          />
+      <Card variant="elevated" padding={0} style={styles.tileCard}>
+        {/* Full-bleed reward image fills the whole card */}
+        <RewardImage uri={reward.imageUrl} earned={reward.earned} />
 
-          {badge.earned && (
-            <Animated.View pointerEvents="none" style={[styles.shineSweep, shineStyle]} />
-          )}
-
-          {!badge.earned && (
-            <View style={styles.lockOverlay}>
-              <View style={styles.lockIconCircle}>
-                <Icon name="lock" size={18} color={colors.surface} />
-              </View>
+        {reward.earned ? (
+          /* Light sweep makes earned rewards feel celebrated */
+          <Animated.View pointerEvents="none" style={[styles.shineSweep, shineStyle]} />
+        ) : (
+          /* Locked overlay on rewards not yet earned */
+          <View pointerEvents="none" style={styles.lockOverlay}>
+            <View style={styles.lockCircle}>
+              <Icon name="lock" size={22} color={colors.surface} />
             </View>
-          )}
-        </View>
-
-        <View style={styles.badgeInfo}>
-          <Text style={[styles.badgeTitle, !badge.earned && styles.lockedTitle]} numberOfLines={2}>
-            {badge.name}
-          </Text>
-
-          {badge.earned ? (
-            <View style={styles.earnedBadge}>
-              <Icon name="verified" size={14} color={colors.growth} />
-              <Text style={styles.earnedText} numberOfLines={1}>
-                {badge.earnedDate}
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.lockedBadge}>
-              <Icon name="lock-outline" size={13} color={colors.textSecondary} />
-              <Text style={styles.lockedText}>Locked</Text>
-            </View>
-          )}
-
-          <Text style={styles.badgeDescription} numberOfLines={3}>
-            {badge.description}
-          </Text>
-        </View>
+            <Text style={styles.lockText}>Locked</Text>
+          </View>
+        )}
       </Card>
     </Animated.View>
   );
 };
 
+/* ─── Skeleton ─── */
+
+function HeroSkeleton() {
+  return (
+    <View style={[styles.heroCard, styles.heroSkeleton]}>
+      <SkeletonBox width={48} height={48} radius={24} />
+      <View style={styles.heroSkeletonBody}>
+        <SkeletonBox width="60%" height={16} />
+        <SkeletonBox width="86%" height={11} style={styles.gap8} />
+        <SkeletonBox width="100%" height={8} radius={borderRadius.full} style={styles.gap12} />
+      </View>
+      <SkeletonShimmer />
+    </View>
+  );
+}
+
+function RewardTileSkeleton() {
+  return (
+    <View style={styles.tileWrapper}>
+      <View style={[styles.tileCard, styles.tileCardSkeleton]}>
+        {/* Full-card fill matches the live image tile (no layout shift) */}
+        <SkeletonBox width="100%" height="100%" radius={borderRadius.large} />
+        <SkeletonShimmer />
+      </View>
+    </View>
+  );
+}
+
+function BadgesGridSkeleton() {
+  return (
+    <View>
+      <HeroSkeleton />
+      <View style={styles.gridContainer}>
+        {Array.from({ length: 6 }).map((_, i) => (
+          <RewardTileSkeleton key={i} />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+/* ─── Hero ─── */
+
+function RewardsHero({ total, earned }: { total: number; earned: number }) {
+  const remaining = Math.max(0, total - earned);
+  const pct = total > 0 ? Math.round((earned / total) * 100) : 0;
+  return (
+    <Animated.View entering={FadeInDown.springify().damping(18).stiffness(220)}>
+      <LinearGradient
+        colors={[colors.primary, colors.primaryDark]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.heroCard}
+      >
+        <View style={styles.heroTopRow}>
+          <View style={styles.heroIconOrb}>
+            <Icon name="emoji-events" size={26} color={colors.accent} />
+          </View>
+          <View style={styles.heroTextWrap}>
+            <Text style={styles.heroTitle}>
+              {earned > 0 ? 'Your reward collection' : 'Rewards to unlock'}
+            </Text>
+            <Text style={styles.heroSubtitle}>
+              {earned > 0
+                ? `${earned} earned${remaining > 0 ? ` · ${remaining} more to go` : ' — collection complete!'}`
+                : 'Show kindness, respect and responsibility to start earning these.'}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.heroProgressRow}>
+          <View style={styles.heroProgressTrack}>
+            <View style={[styles.heroProgressFill, { width: `${pct}%` }]} />
+          </View>
+          <Text style={styles.heroProgressLabel}>
+            {earned}/{total}
+          </Text>
+        </View>
+      </LinearGradient>
+    </Animated.View>
+  );
+}
+
+/* ─── Screen ─── */
+
 const BadgesScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
+  const { showToast } = useToast();
+
+  const [rewards, setRewards] = useState<Reward[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -188,6 +227,42 @@ const BadgesScreen: React.FC = () => {
     }, [])
   );
 
+  // Self-contained: updates state + toasts on failure (never rejects), so it's
+  // safe to use directly for initial load, retry, and pull-to-refresh.
+  const loadRewards = useCallback(() => {
+    return rewardsService
+      .getActiveRewards()
+      .then((list) => {
+        setRewards(list);
+        setError(false);
+      })
+      .catch((err) => {
+        setError(true);
+        showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 4000 });
+      });
+  }, [showToast]);
+
+  // Initial load — keeps skeleton up until the first response resolves.
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    loadRewards().finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [loadRewards]);
+
+  const { refreshing, onRefresh } = usePullToRefresh(loadRewards);
+
+  const retry = useCallback(() => {
+    setLoading(true);
+    loadRewards().finally(() => setLoading(false));
+  }, [loadRewards]);
+
+  const earnedCount = useMemo(() => rewards.filter((r) => r.earned).length, [rewards]);
+
   const bottomPad = useMemo(
     () => getFloatingTabBarBottomPadding(insets.bottom),
     [insets.bottom]
@@ -195,25 +270,59 @@ const BadgesScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.root} edges={['left', 'right', 'bottom']}>
-      <AppGradientHeader
-        title="Badges"
-        subtitle="Achievements and behavioral milestones"
-      />
+      <AppGradientHeader title="Badges" subtitle="Achievements and behavioral milestones" />
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPad + spacing.xl }]}
-        showsVerticalScrollIndicator={false}
-      >
-        <Animated.View
-          entering={FadeInDown.delay(100).springify().damping(18).stiffness(220)}
-          style={styles.gridContainer}
+      {loading ? (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPad + spacing.xl }]}
+          showsVerticalScrollIndicator={false}
+          scrollEnabled={false}
         >
-          {BADGES.map((badge, index) => (
-            <BadgeTile key={badge.id} badge={badge} index={index} />
-          ))}
-        </Animated.View>
-      </ScrollView>
+          <BadgesGridSkeleton />
+        </ScrollView>
+      ) : error && rewards.length === 0 ? (
+        <View style={styles.centeredState}>
+          <View style={styles.errorIconOrb}>
+            <Icon name="cloud-off" size={30} color={colors.primary} />
+          </View>
+          <Text style={styles.errorTitle}>Couldn&apos;t load rewards</Text>
+          <Text style={styles.errorSubtitle}>Please check your connection and try again.</Text>
+          <Pressable
+            onPress={retry}
+            style={({ pressed }) => [styles.retryBtn, pressed && styles.retryBtnPressed]}
+          >
+            <Text style={styles.retryBtnText}>Retry</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPad + spacing.xl }]}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        >
+          <RewardsHero total={rewards.length} earned={earnedCount} />
+
+          {rewards.length === 0 ? (
+            <Animated.View entering={FadeIn.duration(400)} style={styles.emptyState}>
+              <View style={styles.emptyIconOrb}>
+                <Icon name="emoji-events" size={32} color={colors.primary} />
+              </View>
+              <Text style={styles.emptyTitle}>No rewards yet</Text>
+              <Text style={styles.emptySubtitle}>
+                New badges to earn will appear here. Pull down to refresh.
+              </Text>
+            </Animated.View>
+          ) : (
+            <View style={styles.gridContainer}>
+              {rewards.map((reward, index) => (
+                <RewardTile key={reward.uuid} reward={reward} index={index} />
+              ))}
+            </View>
+          )}
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 };
@@ -228,15 +337,90 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingTop: spacing.lg,
+    paddingHorizontal: spacing.md,
   },
+
+  /* ─── Hero ─── */
+  heroCard: {
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: colors.primaryDark,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.28,
+        shadowRadius: 18,
+      },
+      android: { elevation: 6 },
+    }),
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  heroIconOrb: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  heroTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  heroTitle: {
+    ...textStyles.headingMedium,
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.surface,
+  },
+  heroSubtitle: {
+    ...textStyles.caption,
+    color: 'rgba(255,255,255,0.86)',
+    lineHeight: 17,
+    marginTop: 3,
+    fontWeight: '500',
+  },
+  heroProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  heroProgressTrack: {
+    flex: 1,
+    height: 8,
+    borderRadius: borderRadius.full,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    overflow: 'hidden',
+  },
+  heroProgressFill: {
+    height: '100%',
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.accent,
+  },
+  heroProgressLabel: {
+    ...textStyles.caption,
+    color: colors.surface,
+    fontWeight: '800',
+    fontSize: 12,
+  },
+
+  /* ─── Grid ─── */
   gridContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: spacing.md,
     justifyContent: 'space-between',
     rowGap: spacing.md,
   },
-  badgeWrapper: {
+  tileWrapper: {
     width: '48%',
     borderRadius: borderRadius.large,
     ...Platform.select({
@@ -246,167 +430,161 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.08,
         shadowRadius: 18,
       },
-      android: {
-        elevation: 4,
-      },
+      android: { elevation: 4 },
     }),
   },
-  lockedBadgeWrapper: {
-    ...Platform.select({
-      ios: {
-        shadowOpacity: 0,
-      },
-      android: {
-        elevation: 0,
-      },
-    }),
-  },
-  badgeCard: {
-    minHeight: 238,
+  tileCard: {
     marginVertical: 0,
-    paddingHorizontal: spacing.sm,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.md,
-    alignItems: 'center',
+    padding: 0,
+    // Match the reward artwork's native ratio (1099 x 1431) so the whole image
+    // shows with no cropping.
+    aspectRatio: 1099 / 1431,
     borderRadius: borderRadius.large,
     borderWidth: 1,
     borderColor: colors.border,
     overflow: 'hidden',
-  },
-  lockedBadgeCard: {
-    minHeight: 238,
-    marginVertical: 0,
-    paddingHorizontal: spacing.sm,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.md,
-    alignItems: 'center',
-    borderRadius: borderRadius.large,
-    borderWidth: 1,
-    overflow: 'hidden',
-    backgroundColor: '#F7F6FA',
-    borderColor: colors.borderStrong,
-  },
-  imageFrame: {
-    width: 108,
-    height: 108,
-    borderRadius: 54,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.sm,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  earnedImageFrame: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: 'rgba(232, 160, 74, 0.18)',
-    ...Platform.select({
-      ios: {
-        shadowColor: colors.accent,
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.18,
-        shadowRadius: 16,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  lockedImageFrame: {
     backgroundColor: colors.surfaceMuted,
-    borderWidth: 1,
-    borderColor: colors.border,
+    position: 'relative',
+  },
+  tileCardSkeleton: {
+    backgroundColor: colors.surface,
+    justifyContent: 'flex-start',
   },
   badgeImage: {
-    width: 88,
-    height: 88,
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
   },
-  lockedImage: {
-    opacity: 0.28,
-    tintColor: colors.textMuted,
+  imageFallback: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.lavenderSoft,
   },
   shineSweep: {
     position: 'absolute',
-    top: -24,
-    bottom: -24,
-    width: 28,
-    backgroundColor: 'rgba(255, 255, 255, 0.72)',
+    top: -28,
+    bottom: -28,
+    width: 26,
+    backgroundColor: 'rgba(255,255,255,0.45)',
   },
   lockOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(13, 13, 13, 0.08)',
+    gap: spacing.xs,
+    backgroundColor: 'rgba(13,13,13,0.42)',
   },
-  lockIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  lockCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(13, 13, 13, 0.58)',
+    backgroundColor: 'rgba(13,13,13,0.55)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.35)',
   },
-  badgeInfo: {
-    alignItems: 'center',
-    width: '100%',
-    flex: 1,
-  },
-  badgeTitle: {
-    ...textStyles.headingMedium,
-    fontSize: 16,
-    color: colors.ink,
-    textAlign: 'center',
-    lineHeight: 20,
-    minHeight: 40,
-    marginBottom: spacing.xs,
-  },
-  lockedTitle: {
-    color: colors.textSecondary,
-  },
-  earnedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.mintSoft,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
-    borderRadius: borderRadius.full,
-    marginBottom: spacing.sm,
-    maxWidth: '100%',
-  },
-  earnedText: {
+  lockText: {
     ...textStyles.caption,
-    color: colors.growth,
-    fontWeight: '700',
-    marginLeft: 4,
+    color: colors.surface,
+    fontWeight: '800',
     fontSize: 11,
-    lineHeight: 16,
-  },
-  lockedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.border,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
-    borderRadius: borderRadius.full,
-    marginBottom: spacing.sm,
-  },
-  lockedText: {
-    ...textStyles.caption,
-    color: colors.textSecondary,
-    fontWeight: '700',
-    fontSize: 11,
-    lineHeight: 16,
-    marginLeft: 4,
+    letterSpacing: 0.6,
     textTransform: 'uppercase',
   },
-  badgeDescription: {
-    ...textStyles.caption,
+
+  /* ─── Skeleton helpers ─── */
+  heroSkeleton: {
+    backgroundColor: colors.surface,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  heroSkeletonBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  gap8: {
+    marginTop: 8,
+  },
+  gap12: {
+    marginTop: 12,
+  },
+
+  /* ─── Empty state ─── */
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
+  },
+  emptyIconOrb: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.lavenderSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
+  },
+  emptyTitle: {
+    ...textStyles.headingMedium,
+    color: colors.ink,
+    fontWeight: '800',
+  },
+  emptySubtitle: {
+    ...textStyles.bodyMedium,
     color: colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 17,
-    paddingHorizontal: spacing.xs,
+    lineHeight: 21,
+  },
+
+  /* ─── Error state ─── */
+  centeredState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  errorIconOrb: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.lavenderSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
+  },
+  errorTitle: {
+    ...textStyles.headingMedium,
+    color: colors.ink,
+    fontWeight: '800',
+  },
+  errorSubtitle: {
+    ...textStyles.bodyMedium,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 21,
+  },
+  retryBtn: {
+    marginTop: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xl,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.primary,
+  },
+  retryBtnPressed: {
+    opacity: 0.82,
+  },
+  retryBtnText: {
+    ...textStyles.bodyMedium,
+    fontWeight: '700',
+    color: colors.surface,
   },
 });
 

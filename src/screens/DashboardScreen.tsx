@@ -64,11 +64,12 @@ import {
   getWeeklyAspectProgressSeries,
   type WeeklyAspectSeriesRow,
 } from '../data/weeklyAspectProgress';
-import { getAIInsightsForChild } from '../data/aiInsights';
 import { behaviourService } from '../services/behaviourService';
 import { languageService } from '../services/languageService';
+import { aiInsightsService } from '../services/aiInsightsService';
 import { getDisplayMessage } from '../utils/errorParser';
 import type { AspectApiIdMaps } from '../types/behaviour';
+import type { AiWeeklySummary } from '../types/aiSummary';
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
@@ -326,10 +327,8 @@ const DashboardScreen: React.FC = () => {
     selectedDayId,
   ]);
 
-  const aiInsightsPayload = useMemo(
-    () => getAIInsightsForChild(selectedChild?.id ?? ''),
-    [selectedChild?.id]
-  );
+  const [aiSummary, setAiSummary] = useState<AiWeeklySummary | null>(null);
+  const [aiSummaryLoading, setAiSummaryLoading] = useState(true);
 
   // ── Today's mission ──────────────────────────────────────────────────────
   const fetchTodayMission = useCallback(async () => {
@@ -508,9 +507,50 @@ const DashboardScreen: React.FC = () => {
     fetchWeeklyAspectProgress();
   }, [fetchWeeklyAspectProgress]);
 
+  // ── AI weekly insights ───────────────────────────────────────────────────
+  const fetchAiSummary = useCallback(() => {
+    const studentUuid = selectedChild?.id;
+    if (!studentUuid) {
+      setAiSummary(null);
+      setAiSummaryLoading(false);
+      return Promise.resolve();
+    }
+    return aiInsightsService.getParentWeeklySummary(studentUuid, ratingLang)
+      .then((summary) => {
+        setAiSummary(summary);
+      })
+      .catch(() => {
+        setAiSummary(null);
+      })
+      .finally(() => {
+        setAiSummaryLoading(false);
+      });
+  }, [selectedChild?.id, ratingLang]);
+
+  useEffect(() => {
+    fetchAiSummary();
+  }, [fetchAiSummary]);
+
+  // Marks the displayed summary as read once the parent has seen it. Optimistic:
+  // flip local state immediately so a refresh doesn't re-show the "NEW" badge.
+  const handleAiSummaryRead = useCallback((summaryUuid: string) => {
+    setAiSummary((prev) =>
+      prev && prev.uuid === summaryUuid ? { ...prev, readStatus: true } : prev
+    );
+    aiInsightsService.markRead(summaryUuid).catch(() => {
+      // Non-critical — silently ignore; it'll be retried on the next view.
+    });
+  }, []);
+
   const refreshDashboard = useCallback(
-    () => Promise.all([fetchAspects(), fetchWeeklyAspectProgress(), fetchTodayMission(), fetchBsi()]),
-    [fetchAspects, fetchWeeklyAspectProgress, fetchTodayMission, fetchBsi]
+    () => Promise.all([
+      fetchAspects(),
+      fetchWeeklyAspectProgress(),
+      fetchTodayMission(),
+      fetchBsi(),
+      fetchAiSummary(),
+    ]),
+    [fetchAspects, fetchWeeklyAspectProgress, fetchTodayMission, fetchBsi, fetchAiSummary]
   );
 
   const { refreshing, onRefresh } = usePullToRefresh(refreshDashboard);
@@ -993,18 +1033,18 @@ const DashboardScreen: React.FC = () => {
           </Animated.View>
         )}
 
-        {aspectsLoading ? (
+        {aiSummaryLoading ? (
           <AiInsightsSkeleton />
-        ) : (
+        ) : aiSummary ? (
           <Animated.View
             entering={FadeInDown.delay(140).springify().damping(18).stiffness(220)}
             style={[styles.shadowWrapper, styles.shadowWrapperHoriz]}
           >
             <View style={styles.sectionTight}>
-              <AIInsightsCard payload={aiInsightsPayload} />
+              <AIInsightsCard summary={aiSummary} onRead={handleAiSummaryRead} />
             </View>
           </Animated.View>
-        )}
+        ) : null}
       </ScrollView>
 
       <Modal

@@ -31,7 +31,8 @@ export type MentorMission = {
   startDate: string;
   endDate: string;
   progressPercent: number;
-  rewardBadge: MentorMissionBadgeReward;
+  /** May be null when the API has no badge configured for this mission. */
+  rewardBadge: MentorMissionBadgeReward | null;
   timeline: MentorMissionTimelineEntry[];
   completionHistory: MentorMissionHistoryEntry[];
 };

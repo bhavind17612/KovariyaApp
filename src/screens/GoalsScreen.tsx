@@ -28,7 +28,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { setStatusBarStyle } from 'expo-status-bar';
 import { useFocusEffect } from '@react-navigation/native';
-import { AppGradientHeader, AppRefreshControl, Button, Card, InputField } from '../components';
+import { AppGradientHeader, AppRefreshControl, Button, Card, InputField, GoalsListSkeleton } from '../components';
 import { DatePickerField } from '../components/DatePickerField';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { toIsoDate } from '../utils/age';
@@ -224,6 +224,8 @@ const GoalsScreen: React.FC = () => {
 	const { selectedChildId } = useChildren();
 	const insets = useSafeAreaInsets();
 	const [goals, setGoals] = useState<Goal[]>([]);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState(false);
 	const [showTooltip, setShowTooltip] = useState(false);
 	const tooltipShownRef = useRef(false);
 
@@ -260,16 +262,36 @@ const GoalsScreen: React.FC = () => {
 	}, [user?.id]);
 
 	useEffect(() => {
+		// Wait for auth before the first fetch — keep the skeleton visible meanwhile.
+		if (!user?.id) return;
 		let active = true;
-		loadGoals().catch(() => {
-			if (active) {
-				showToast({ type: 'error', message: 'Could not load goals. Pull to retry.' });
-			}
-		});
+		setLoading(true);
+		loadGoals()
+			.then(() => {
+				if (active) setError(false);
+			})
+			.catch(() => {
+				if (active) {
+					setError(true);
+					showToast({ type: 'error', message: 'Could not load goals. Pull to retry.' });
+				}
+			})
+			.finally(() => {
+				if (active) setLoading(false);
+			});
 		return () => {
 			active = false;
 		};
-	}, [loadGoals, showToast]);
+	}, [user?.id, loadGoals, showToast]);
+
+	const retryLoad = useCallback(() => {
+		setLoading(true);
+		setError(false);
+		loadGoals()
+			.then(() => setError(false))
+			.catch(() => setError(true))
+			.finally(() => setLoading(false));
+	}, [loadGoals]);
 
 	const { refreshing, onRefresh } = usePullToRefresh(loadGoals);
 
@@ -435,6 +457,21 @@ const GoalsScreen: React.FC = () => {
 				subtitle="Reward-based behaviour goals"
 			/>
 
+			{loading ? (
+				<GoalsListSkeleton />
+			) : error ? (
+				<View style={styles.centeredState}>
+					<Text style={styles.errorText}>
+						Could not load goals. Please check your connection.
+					</Text>
+					<Pressable
+						onPress={retryLoad}
+						style={({ pressed }) => [styles.retryBtn, pressed && styles.retryBtnPressed]}
+					>
+						<Text style={styles.retryBtnText}>Retry</Text>
+					</Pressable>
+				</View>
+			) : (
 			<ScrollView
 				style={styles.scroll}
 				contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPad }]}
@@ -447,6 +484,19 @@ const GoalsScreen: React.FC = () => {
 					active={stats.active}
 					completed={stats.completed}
 				/>
+
+				{/* ── Empty state ── */}
+				{sortedGoals.length === 0 ? (
+					<View style={styles.emptyState}>
+						<View style={styles.emptyIconOrb}>
+							<Icon name="flag" size={30} color={colors.primary} />
+						</View>
+						<Text style={styles.emptyTitle}>No goals yet</Text>
+						<Text style={styles.emptySubtitle}>
+							Tap the + button to create your first reward-based behaviour goal.
+						</Text>
+					</View>
+				) : null}
 
 				{/* ── Goal cards ── */}
 				{sortedGoals.map((goal, index) => {
@@ -565,6 +615,7 @@ const GoalsScreen: React.FC = () => {
 					);
 				})}
 			</ScrollView>
+			)}
 
 			{/* ── FAB + Tooltip ── */}
 			<View style={[styles.fabContainer, { bottom: fabBottom }]} pointerEvents="box-none">
@@ -774,6 +825,62 @@ const styles = StyleSheet.create({
 	scrollContent: {
 		padding: spacing.lg,
 		paddingVertical: spacing.sm,
+	},
+
+	/* ─── Loading / error / empty states ─── */
+	centeredState: {
+		flex: 1,
+		alignItems: 'center',
+		justifyContent: 'center',
+		padding: spacing.lg,
+		gap: spacing.md,
+	},
+	errorText: {
+		...textStyles.bodyMedium,
+		color: colors.textSecondary,
+		textAlign: 'center',
+		lineHeight: 22,
+	},
+	retryBtn: {
+		paddingVertical: spacing.sm,
+		paddingHorizontal: spacing.lg,
+		borderRadius: borderRadius.full,
+		backgroundColor: colors.primary,
+	},
+	retryBtnPressed: {
+		opacity: 0.82,
+	},
+	retryBtnText: {
+		...textStyles.bodyMedium,
+		fontWeight: '700',
+		color: colors.surface,
+	},
+	emptyState: {
+		alignItems: 'center',
+		justifyContent: 'center',
+		paddingVertical: spacing.xxl,
+		paddingHorizontal: spacing.lg,
+		gap: spacing.sm,
+	},
+	emptyIconOrb: {
+		width: 64,
+		height: 64,
+		borderRadius: 32,
+		backgroundColor: colors.lavenderSoft,
+		alignItems: 'center',
+		justifyContent: 'center',
+		marginBottom: spacing.xs,
+	},
+	emptyTitle: {
+		...textStyles.headingMedium,
+		color: colors.ink,
+		fontWeight: '800',
+	},
+	emptySubtitle: {
+		...textStyles.bodyMedium,
+		color: colors.textSecondary,
+		textAlign: 'center',
+		lineHeight: 21,
 	},
 
 	/* ─── Summary strip ─── */

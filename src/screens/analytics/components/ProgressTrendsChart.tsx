@@ -1,16 +1,14 @@
-import React, { useMemo, useState } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, Pressable, Platform, useWindowDimensions } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import Svg, { Circle, Polyline, Line, Text as SvgText } from 'react-native-svg';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { Card } from '../../../components';
+import { Card, SkeletonBox, SkeletonShimmer } from '../../../components';
 import { colors, spacing, textStyles, borderRadius } from '../../../theme';
 import { analyticsStyles as shared } from '../styles';
-import type { DualTrendRow } from '../../../data/analyticsData';
-
-type TrendPeriod = 'weekly' | 'monthly';
+import type { TrendPoint } from '../../../types/progressTrends';
 
 /* ═══════════════════════════════════════════════════════════════════ */
 /*  Chart constants                                                   */
@@ -23,15 +21,32 @@ const LINE_Y_TICKS = [100, 75, 50, 25];
 /*  Props                                                             */
 /* ═══════════════════════════════════════════════════════════════════ */
 interface ProgressTrendsChartProps {
-	data: DualTrendRow[];
+	data: TrendPoint[];
+	loading: boolean;
+	error: boolean;
+	period: 'weekly' | 'monthly';
+	onTogglePeriod: (period: 'weekly' | 'monthly') => void;
 	childName: string;
+}
+
+/** Last non-null value in a series, or 0. */
+function lastValue(vals: (number | null)[]): number {
+	for (let i = vals.length - 1; i >= 0; i--) {
+		const v = vals[i];
+		if (v != null) return v;
+	}
+	return 0;
 }
 
 /* ═══════════════════════════════════════════════════════════════════ */
 /*  Component                                                         */
 /* ═══════════════════════════════════════════════════════════════════ */
 const ProgressTrendsChart: React.FC<ProgressTrendsChartProps> = ({
-	data,
+	data: series,
+	loading,
+	error,
+	period,
+	onTogglePeriod,
 	childName,
 }) => {
 	const { width: windowWidth } = useWindowDimensions();
@@ -40,45 +55,24 @@ const ProgressTrendsChart: React.FC<ProgressTrendsChartProps> = ({
 	const plotH = LINE_PLOT_H;
 	const svgH = LINE_PAD.t + plotH + LINE_PAD.b;
 
-	const [period, setPeriod] = useState<TrendPeriod>('weekly');
-
-	/* Derive series for the current view:
-	   - Weekly  → the daily data points as provided (Mon-Sun)
-	   - Monthly → 4 week-wise points (W1-W4) synthesised from the same data
-		 so the latest week (W4) matches the current week's average.        */
-	const series = useMemo<DualTrendRow[]>(() => {
-		if (period === 'weekly') return data;
-		if (data.length === 0) return [];
-
-		const avg = (arr: number[]) =>
-			arr.reduce((acc, v) => acc + v, 0) / arr.length;
-		const clamp = (v: number) => Math.max(20, Math.min(100, Math.round(v)));
-
-		const bsiAvg = avg(data.map((d) => d.bsi));
-		const pcAvg = avg(data.map((d) => d.parentConsistency));
-
-		// Smooth ramp leading into the current week's average for both series.
-		const bsiOffsets = [-9, -6, -3, 0];
-		const pcOffsets = [-7, -4, -2, 0];
-
-		return ['W1', 'W2', 'W3', 'W4'].map((label, i) => ({
-			label,
-			bsi: clamp(bsiAvg + bsiOffsets[i]),
-			parentConsistency: clamp(pcAvg + pcOffsets[i]),
-		}));
-	}, [data, period]);
-
 	const n = series.length;
 
-	const buildPts = (vals: number[]) =>
-		vals.map((v, i) => ({
-			x: LINE_PAD.l + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW),
-			y: LINE_PAD.t + (1 - v / 100) * plotH,
-		}));
+	// Plot only points that have data; nulls (e.g. future days) become gaps.
+	const buildPts = (vals: (number | null)[]) =>
+		vals.reduce<{ x: number; y: number }[]>((acc, v, i) => {
+			if (v != null) {
+				acc.push({
+					x: LINE_PAD.l + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW),
+					y: LINE_PAD.t + (1 - v / 100) * plotH,
+				});
+			}
+			return acc;
+		}, []);
 
 	const bsiPts = buildPts(series.map((d) => d.bsi));
 	const pcPts = buildPts(series.map((d) => d.parentConsistency));
-	const latest = series[series.length - 1];
+	const latestBsi = lastValue(series.map((d) => d.bsi));
+	const latestPc = lastValue(series.map((d) => d.parentConsistency));
 
 	const toStr = (pts: { x: number; y: number }[]) =>
 		pts.map((p) => `${p.x},${p.y}`).join(' ');
@@ -87,6 +81,10 @@ const ProgressTrendsChart: React.FC<ProgressTrendsChartProps> = ({
 		{ pts: bsiPts, color: colors.primary, label: 'BSI Trend' },
 		{ pts: pcPts, color: colors.growth, label: 'Parent Consistency' },
 	];
+
+	const showSkeleton = loading && series.length === 0;
+	const showError = error && series.length === 0;
+	const showEmpty = !loading && !error && series.length === 0;
 
 	return (
 		<Animated.View
@@ -114,7 +112,7 @@ const ProgressTrendsChart: React.FC<ProgressTrendsChartProps> = ({
 					{/* Period toggle */}
 					<View style={s.trendToggle}>
 						<Pressable
-							onPress={() => setPeriod('weekly')}
+							onPress={() => onTogglePeriod('weekly')}
 							style={[
 								s.trendToggleBtn,
 								period === 'weekly' && s.trendToggleBtnActive,
@@ -130,7 +128,7 @@ const ProgressTrendsChart: React.FC<ProgressTrendsChartProps> = ({
 							</Text>
 						</Pressable>
 						<Pressable
-							onPress={() => setPeriod('monthly')}
+							onPress={() => onTogglePeriod('monthly')}
 							style={[
 								s.trendToggleBtn,
 								period === 'monthly' && s.trendToggleBtnActive,
@@ -156,16 +154,34 @@ const ProgressTrendsChart: React.FC<ProgressTrendsChartProps> = ({
 					end={{ x: 1, y: 1 }}
 					style={s.chartPanel}
 				>
-					<View style={s.metricChipsRow}>
+					{showSkeleton ? (
+							<View style={s.skeletonWrap}>
+								<View style={s.metricChipsRow}>
+									<SkeletonBox style={s.skeletonChip} height={30} radius={borderRadius.full} />
+									<SkeletonBox style={s.skeletonChip} height={30} radius={borderRadius.full} />
+								</View>
+								<SkeletonBox width="100%" height={svgH} radius={borderRadius.large} style={{ marginTop: spacing.sm }} />
+								<SkeletonShimmer />
+							</View>
+						) : showError || showEmpty ? (
+							<View style={s.stateBody}>
+								<Icon name={showError ? 'cloud-off' : 'show-chart'} size={26} color={colors.textMuted} />
+								<Text style={s.stateText}>
+									{showError ? 'Could not load trends. Pull to refresh.' : 'Not enough data to show trends yet.'}
+								</Text>
+							</View>
+						) : (
+						<>
+						<View style={s.metricChipsRow}>
 						<View style={s.metricChip}>
 							<View style={[s.metricChipDot, { backgroundColor: colors.primary }]} />
 							<Text style={s.metricChipLabel}>BSI</Text>
-							<Text style={s.metricChipValue}>{latest?.bsi ?? 0}%</Text>
+							<Text style={s.metricChipValue}>{latestBsi}%</Text>
 						</View>
 						<View style={s.metricChip}>
 							<View style={[s.metricChipDot, { backgroundColor: colors.growth }]} />
 							<Text style={s.metricChipLabel}>Consistency</Text>
-							<Text style={s.metricChipValue}>{latest?.parentConsistency ?? 0}%</Text>
+							<Text style={s.metricChipValue}>{latestPc}%</Text>
 						</View>
 					</View>
 
@@ -251,7 +267,9 @@ const ProgressTrendsChart: React.FC<ProgressTrendsChartProps> = ({
 							</View>
 						))}
 					</View>
-				</LinearGradient>
+									</>
+						)}
+					</LinearGradient>
 
 				<View style={s.trendInsightCallout}>
 					<Icon name="lightbulb" size={14} color={colors.accent} style={{ marginTop: 1 }} />
@@ -394,6 +412,28 @@ const s = StyleSheet.create({
 		padding: spacing.sm + 2,
 		borderWidth: StyleSheet.hairlineWidth,
 		borderColor: 'rgba(124,106,232,0.10)',
+	},
+	skeletonWrap: {
+		position: 'relative',
+		overflow: 'hidden',
+		borderRadius: borderRadius.large,
+	},
+	skeletonChip: {
+		flex: 1,
+	},
+	stateBody: {
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: spacing.sm,
+		paddingVertical: spacing.xl,
+		paddingHorizontal: spacing.lg,
+	},
+	stateText: {
+		...textStyles.bodyMedium,
+		fontSize: 13,
+		color: colors.textSecondary,
+		textAlign: 'center',
+		lineHeight: 19,
 	},
 	metricChipsRow: {
 		flexDirection: 'row',

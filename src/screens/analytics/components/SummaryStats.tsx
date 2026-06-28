@@ -5,13 +5,18 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import { colors, spacing, textStyles, borderRadius } from '../../../theme';
 import { analyticsStyles as shared } from '../styles';
-import type { SummaryCounters, SummaryPeriod } from '../../../data/analyticsData';
+import { SkeletonBox, SkeletonShimmer } from '../../../components';
+import type { SummaryStatsData } from '../../../types/summaryStats';
+
+type SummaryPeriod = 'weekly' | 'monthly';
 
 /* ═══════════════════════════════════════════════════════════════════ */
 /*  Props                                                             */
 /* ═══════════════════════════════════════════════════════════════════ */
 interface SummaryStatsProps {
-	counters: SummaryCounters;
+	counters: SummaryStatsData | null;
+	loading: boolean;
+	error: boolean;
 	summaryPeriod: SummaryPeriod;
 	onTogglePeriod: (period: SummaryPeriod) => void;
 }
@@ -31,9 +36,12 @@ const STAT_PILLS = [
 /* ═══════════════════════════════════════════════════════════════════ */
 const SummaryStats: React.FC<SummaryStatsProps> = ({
 	counters,
+	loading,
+	error,
 	summaryPeriod,
 	onTogglePeriod,
 }) => {
+	const showSkeleton = loading && !counters;
 	return (
 		<Animated.View
 			entering={FadeInDown.delay(400).springify().damping(18).stiffness(220)}
@@ -89,11 +97,20 @@ const SummaryStats: React.FC<SummaryStatsProps> = ({
 							<View style={[s.statPillIconWrap, { backgroundColor: pill.bg }]}>
 								<Icon name={pill.icon} size={18} color={pill.color} />
 							</View>
-							<Text style={s.statPillValue}>{counters[pill.key]}</Text>
+							{showSkeleton ? (
+								<SkeletonBox width={28} height={22} radius={6} style={s.statPillSkeleton} />
+							) : (
+								<Text style={s.statPillValue}>{counters ? counters[pill.key] : '—'}</Text>
+							)}
 							<Text style={s.statPillLabel}>{pill.label}</Text>
 						</View>
 					))}
+					{showSkeleton ? <SkeletonShimmer /> : null}
 				</View>
+
+				{error && !counters ? (
+					<Text style={s.errorNote}>Could not load stats. Pull to refresh.</Text>
+				) : null}
 			</View>
 		</Animated.View>
 	);
@@ -157,6 +174,17 @@ const s = StyleSheet.create({
 		flexDirection: 'row',
 		gap: spacing.sm,
 		flexWrap: 'wrap',
+		position: 'relative',
+	},
+	statPillSkeleton: {
+		marginVertical: 4,
+	},
+	errorNote: {
+		...textStyles.caption,
+		fontSize: 11,
+		color: colors.textMuted,
+		textAlign: 'center',
+		marginTop: spacing.sm,
 	},
 	statPill: {
 		flex: 1,

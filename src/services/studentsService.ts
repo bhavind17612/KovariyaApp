@@ -35,6 +35,34 @@ function ageFromDob(dob: string | null): number {
   return Math.max(age, 0);
 }
 
+/**
+ * Fields the app can update on a student. All optional — only the keys present
+ * are sent in the PATCH body. Keys are snake_case to match the backend.
+ */
+export interface UpdateStudentPayload {
+  full_name?: string;
+  date_of_birth?: string;
+  gender?: 'male' | 'female';
+  class_name?: string;
+  section?: string;
+  school_name?: string;
+  is_active?: boolean;
+}
+
+/**
+ * Fields required to create a new student. `school_id` is the backend school
+ * lookup id (see schoolsService). Field names mirror the onboarding create flow.
+ */
+export interface CreateStudentPayload {
+  full_name: string;
+  date_of_birth: string;
+  gender: 'male' | 'female';
+  grade?: string;
+  section?: string;
+  school_id: string;
+  is_active?: boolean;
+}
+
 /** Maps a backend StudentApiRow to the app's Child type. */
 function toChild(row: StudentApiRow): Child {
   return {
@@ -61,6 +89,24 @@ class StudentsService {
     const response = await api.get<StudentApiRow[]>(ENDPOINTS.STUDENTS.LIST);
     const list = Array.isArray(response.data.data) ? response.data.data : [];
     return list.map(toChild);
+  }
+
+  /** Creates a new child for the logged-in parent and returns the created Child. */
+  async createStudent(payload: CreateStudentPayload): Promise<Child> {
+    const response = await api.post<StudentApiRow>(ENDPOINTS.STUDENTS.LIST, payload);
+    return toChild(response.data.data);
+  }
+
+  /** Fetches the full detail for a single child by UUID. */
+  async getStudent(uuid: string): Promise<Child> {
+    const response = await api.get<StudentApiRow>(ENDPOINTS.STUDENTS.DETAIL(uuid));
+    return toChild(response.data.data);
+  }
+
+  /** Updates a child's details and returns the refreshed Child. */
+  async updateStudent(uuid: string, payload: UpdateStudentPayload): Promise<Child> {
+    const response = await api.patch<StudentApiRow>(ENDPOINTS.STUDENTS.UPDATE(uuid), payload);
+    return toChild(response.data.data);
   }
 }
 

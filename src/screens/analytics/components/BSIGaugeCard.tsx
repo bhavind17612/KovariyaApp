@@ -14,30 +14,78 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, textStyles, borderRadius } from '../../../theme';
 import { scoreColor, scoreBg, scoreLabel } from '../utils';
 import { AnimatedNumber, SemiCircleGauge } from './gauges';
-import type { SdsAnalytics, StrengthWeakness } from '../../../data/analyticsData';
+import { SkeletonBox, SkeletonShimmer } from '../../../components';
+import type { StudentBsi } from '../../../types/bsi';
 
 /* ═══════════════════════════════════════════════════════════════════ */
 /*  Props                                                             */
 /* ═══════════════════════════════════════════════════════════════════ */
 interface BSIGaugeCardProps {
-	bsi: SdsAnalytics;
+	data: StudentBsi | null;
+	loading: boolean;
+	error: boolean;
 	childName: string;
-	weakAreas: StrengthWeakness['weakAreas'];
 	bsiPeriod: 'weekly' | 'monthly';
 	onTogglePeriod: (period: 'weekly' | 'monthly') => void;
+}
+
+/** "2026-06-08" → "Jun 8". Falls back to the raw value. */
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function formatDay(iso: string): string {
+	if (!iso) return '';
+	const [, m, d] = iso.split('T')[0].split('-');
+	const month = MONTHS[Number(m) - 1];
+	return month ? `${month} ${Number(d)}` : iso;
 }
 
 /* ═══════════════════════════════════════════════════════════════════ */
 /*  Component                                                         */
 /* ═══════════════════════════════════════════════════════════════════ */
+const PeriodToggle: React.FC<{
+	bsiPeriod: 'weekly' | 'monthly';
+	onTogglePeriod: (period: 'weekly' | 'monthly') => void;
+}> = ({ bsiPeriod, onTogglePeriod }) => (
+	<View style={s.bsiToggle}>
+		<Pressable
+			onPress={() => onTogglePeriod('weekly')}
+			style={[s.bsiToggleBtn, bsiPeriod === 'weekly' && s.bsiToggleBtnActive]}
+		>
+			<Text style={[s.bsiToggleText, bsiPeriod === 'weekly' && s.bsiToggleTextActive]}>
+				Weekly
+			</Text>
+		</Pressable>
+		<Pressable
+			onPress={() => onTogglePeriod('monthly')}
+			style={[s.bsiToggleBtn, bsiPeriod === 'monthly' && s.bsiToggleBtnActive]}
+		>
+			<Text style={[s.bsiToggleText, bsiPeriod === 'monthly' && s.bsiToggleTextActive]}>
+				Monthly
+			</Text>
+		</Pressable>
+	</View>
+);
+
 const BSIGaugeCard: React.FC<BSIGaugeCardProps> = ({
-	bsi,
+	data,
+	loading,
+	error,
 	childName,
-	weakAreas,
 	bsiPeriod,
 	onTogglePeriod,
 }) => {
-	const bsiColor = scoreColor(bsi.percent);
+	const percent = data ? Math.max(0, Math.round(data.bsi)) : 0;
+	const bsiColor = scoreColor(percent);
+	const periodLabel = bsiPeriod === 'weekly' ? 'This Week' : 'This Month';
+
+	// Direction → trend icon. Prefer the server's `direction`, fall back to change sign.
+	const trendIcon = React.useMemo(() => {
+		const dir = data?.direction;
+		if (dir === 'improved') return 'trending-up';
+		if (dir === 'declined') return 'trending-down';
+		if (dir === 'steady') return 'trending-flat';
+		const change = data?.change ?? 0;
+		return change > 0 ? 'trending-up' : change < 0 ? 'trending-down' : 'trending-flat';
+	}, [data?.direction, data?.change]);
 
 	/* Build a soft 3-stop wash from the score colour itself.
 	   Hex + 2-digit alpha (00-FF) keeps everything tinted around bsiColor. */
@@ -50,6 +98,59 @@ const BSIGaugeCard: React.FC<BSIGaugeCardProps> = ({
 			] as const,
 		[bsiColor],
 	);
+
+	/* ── Loading skeleton ── */
+	if (loading && !data) {
+		return (
+			<Animated.View
+				entering={FadeInDown.springify().damping(18).stiffness(220)}
+				style={[s.shadowWrapper, { marginBottom: spacing.sm }]}
+			>
+				<View style={[s.bsiCard, s.skeletonCard]}>
+					<View style={s.bsiHeaderRow}>
+						<SkeletonBox width="56%" height={12} />
+						<SkeletonBox width={120} height={28} radius={borderRadius.full} />
+					</View>
+					<View style={s.skeletonGauge}>
+						<SkeletonBox width={196} height={104} radius={16} />
+					</View>
+					<SkeletonBox width={120} height={30} radius={borderRadius.full} style={s.skeletonCenter} />
+					<SkeletonBox width="100%" height={52} radius={borderRadius.large} style={{ marginTop: spacing.md }} />
+					<SkeletonBox width="100%" height={44} radius={borderRadius.large} style={{ marginTop: spacing.md }} />
+					<SkeletonShimmer />
+				</View>
+			</Animated.View>
+		);
+	}
+
+	/* ── Error / empty state ── */
+	if (!data) {
+		return (
+			<Animated.View
+				entering={FadeInDown.springify().damping(18).stiffness(220)}
+				style={[s.shadowWrapper, { marginBottom: spacing.sm }]}
+			>
+				<View style={[s.bsiCard, s.emptyCard]}>
+					<View style={s.bsiHeaderRow}>
+						<Text style={s.bsiTitle}>Behaviour Score Index (BSI)</Text>
+						<PeriodToggle bsiPeriod={bsiPeriod} onTogglePeriod={onTogglePeriod} />
+					</View>
+					<View style={s.emptyBody}>
+						<Icon
+							name={error ? 'cloud-off' : 'insights'}
+							size={30}
+							color={colors.textMuted}
+						/>
+						<Text style={s.emptyText}>
+							{error
+								? 'Could not load the BSI score. Pull to refresh.'
+								: `No ${bsiPeriod} BSI data yet for ${childName}.`}
+						</Text>
+					</View>
+				</View>
+			</Animated.View>
+		);
+	}
 
 	return (
 		<Animated.View
@@ -67,47 +168,19 @@ const BSIGaugeCard: React.FC<BSIGaugeCardProps> = ({
 						<View style={s.bsiTitleRow}>
 							<Text style={s.bsiTitle}>Behaviour Score Index (BSI)</Text>
 						</View>
-						<View style={s.bsiToggle}>
-							<Pressable
-								onPress={() => onTogglePeriod('weekly')}
-								style={[
-									s.bsiToggleBtn,
-									bsiPeriod === 'weekly' && s.bsiToggleBtnActive,
-								]}
-							>
-								<Text
-									style={[
-										s.bsiToggleText,
-										bsiPeriod === 'weekly' && s.bsiToggleTextActive,
-									]}
-								>
-									Weekly
-								</Text>
-							</Pressable>
-							<Pressable
-								onPress={() => onTogglePeriod('monthly')}
-								style={[
-									s.bsiToggleBtn,
-									bsiPeriod === 'monthly' && s.bsiToggleBtnActive,
-								]}
-							>
-								<Text
-									style={[
-										s.bsiToggleText,
-										bsiPeriod === 'monthly' && s.bsiToggleTextActive,
-									]}
-								>
-									Monthly
-								</Text>
-							</Pressable>
-						</View>
+						<PeriodToggle bsiPeriod={bsiPeriod} onTogglePeriod={onTogglePeriod} />
 					</View>
+
+					{/* Period range */}
+					<Text style={s.bsiRange}>
+						{formatDay(data.periodStart)} – {formatDay(data.periodEnd)}
+					</Text>
 
 					{/* Gauge */}
 					<View style={s.gaugeStage}>
 						<View style={s.bsiGaugeWrap}>
 							<SemiCircleGauge
-								percent={bsi.percent}
+								percent={percent}
 								size={196}
 								strokeWidth={16}
 								fillColor={bsiColor}
@@ -116,26 +189,16 @@ const BSIGaugeCard: React.FC<BSIGaugeCardProps> = ({
 							{/* Center overlay */}
 							<View style={s.bsiCenterOverlay}>
 								<AnimatedNumber
-									value={bsi.percent}
+									value={percent}
 									suffix="%"
 									delay={200}
 									duration={1200}
 									style={[s.bsiBigNumber, { color: bsiColor, textAlign: 'center' }]}
 								/>
 								<View style={s.bsiLabelRow}>
-									<Icon
-										name={
-											bsi.trend > 0
-												? 'trending-up'
-												: bsi.trend < 0
-													? 'trending-down'
-													: 'trending-flat'
-										}
-										size={16}
-										color={bsiColor}
-									/>
+									<Icon name={trendIcon} size={16} color={bsiColor} />
 									<Text style={[s.bsiLabelText, { color: bsiColor }]}>
-										{scoreLabel(bsi.percent)}
+										{scoreLabel(percent)}
 									</Text>
 								</View>
 							</View>
@@ -144,18 +207,32 @@ const BSIGaugeCard: React.FC<BSIGaugeCardProps> = ({
 
 					{/* Bottom info */}
 					<View style={s.bsiBottomRow}>
-						<View style={[s.bsiTrendPill, { backgroundColor: scoreBg(bsi.percent) }]}>
+						<View style={[s.bsiTrendPill, { backgroundColor: scoreBg(percent) }]}>
+							<Text style={[s.bsiTrendText, { color: bsiColor }]}>{periodLabel}</Text>
+							<Icon name={trendIcon} size={14} color={bsiColor} />
 							<Text style={[s.bsiTrendText, { color: bsiColor }]}>
-								This Week
+								{data.change > 0 ? `+${data.change}` : data.change}%
 							</Text>
-							<Icon
-								name={bsi.trend > 0 ? 'trending-up' : bsi.trend < 0 ? 'trending-down' : 'trending-flat'}
-								size={14}
-								color={bsiColor}
-							/>
-							<Text style={[s.bsiTrendText, { color: bsiColor }]}>
-								{bsi.trend}%
+						</View>
+					</View>
+
+					{/* Quick stats */}
+					<View style={s.statsRow}>
+						<View style={s.statItem}>
+							<Text style={s.statValue}>{data.previousBsi}%</Text>
+							<Text style={s.statLabel}>Previous</Text>
+						</View>
+						<View style={s.statDivider} />
+						<View style={s.statItem}>
+							<Text style={s.statValue}>
+								{data.activeDays}/{data.totalDays}
 							</Text>
+							<Text style={s.statLabel}>Active days</Text>
+						</View>
+						<View style={s.statDivider} />
+						<View style={s.statItem}>
+							<Text style={s.statValue}>{Math.round(data.avgDbs)}</Text>
+							<Text style={s.statLabel}>Avg DBS</Text>
 						</View>
 					</View>
 
@@ -163,11 +240,9 @@ const BSIGaugeCard: React.FC<BSIGaugeCardProps> = ({
 					<View style={s.bsiInsightWrap}>
 						<Icon name="auto-awesome" size={14} color={colors.primary} style={{ marginTop: 1 }} />
 						<Text style={s.bsiInsightLine}>
-							{childName} is doing well. Focus on{' '}
-							<Text style={{ fontWeight: '800', color: colors.primaryDark }}>
-								{weakAreas.length > 0 ? weakAreas[0].name : 'all areas'}
-							</Text>
-							.
+							{data.weakArea
+								? data.weakArea.focus
+								: `${childName} is doing well — keep the momentum going across all areas.`}
 						</Text>
 					</View>
 
@@ -402,5 +477,73 @@ const s = StyleSheet.create({
 		fontWeight: '700',
 		color: '#FFF',
 		letterSpacing: 0.3,
+	},
+	bsiRange: {
+		...textStyles.caption,
+		color: colors.textMuted,
+		fontWeight: '700',
+		fontSize: 11,
+		marginBottom: spacing.sm,
+	},
+	statsRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		backgroundColor: 'rgba(255,255,255,0.6)',
+		borderRadius: borderRadius.large,
+		paddingVertical: spacing.sm,
+		marginBottom: spacing.md,
+		borderWidth: StyleSheet.hairlineWidth,
+		borderColor: 'rgba(17,17,17,0.05)',
+	},
+	statItem: {
+		flex: 1,
+		alignItems: 'center',
+		gap: 2,
+	},
+	statValue: {
+		...textStyles.bodyLarge,
+		fontWeight: '800',
+		color: colors.ink,
+		fontSize: 16,
+	},
+	statLabel: {
+		...textStyles.caption,
+		color: colors.textMuted,
+		fontWeight: '600',
+		fontSize: 10,
+		textTransform: 'uppercase',
+		letterSpacing: 0.3,
+	},
+	statDivider: {
+		width: StyleSheet.hairlineWidth,
+		height: 28,
+		backgroundColor: colors.border,
+	},
+	skeletonCard: {
+		alignItems: 'stretch',
+	},
+	skeletonGauge: {
+		alignItems: 'center',
+		marginTop: spacing.md,
+	},
+	skeletonCenter: {
+		alignSelf: 'center',
+		marginTop: spacing.sm,
+	},
+	emptyCard: {
+		alignItems: 'stretch',
+	},
+	emptyBody: {
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: spacing.sm,
+		paddingVertical: spacing.xl,
+	},
+	emptyText: {
+		...textStyles.bodyMedium,
+		color: colors.textSecondary,
+		textAlign: 'center',
+		lineHeight: 20,
+		paddingHorizontal: spacing.lg,
 	},
 });

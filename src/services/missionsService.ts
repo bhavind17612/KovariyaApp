@@ -19,6 +19,7 @@ const IMAGE_MIME_BY_EXT: Record<string, string> = {
 function normalizeMission(m: MentorMission): MentorMission {
   return {
     ...m,
+    rewardBadge: m.rewardBadge ?? null,
     timeline: Array.isArray(m.timeline) ? m.timeline : [],
     completionHistory: Array.isArray(m.completionHistory) ? m.completionHistory : [],
   };

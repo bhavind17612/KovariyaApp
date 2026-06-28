@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Linking,
   Platform,
@@ -14,7 +14,18 @@ import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { AppGradientHeader, Card } from '../components';
+import {
+  AppGradientHeader,
+  AppRefreshControl,
+  Card,
+  SkeletonBox,
+  SkeletonShimmer,
+} from '../components';
+import { usePullToRefresh } from '../hooks/usePullToRefresh';
+import { useToast } from '../context/ToastContext';
+import { tutorialsService } from '../services/tutorialsService';
+import { getDisplayMessage } from '../utils/errorParser';
+import type { Tutorial } from '../types/tutorial';
 import {
   borderRadius,
   colors,
@@ -23,52 +34,28 @@ import {
   textStyles,
 } from '../theme';
 
-type TutorialVideo = {
-  id: string;
-  title: string;
-  description: string;
-  duration: string;
-  url: string;
-  icon: string;
-};
-
-const TUTORIAL_VIDEOS: TutorialVideo[] = [
-  {
-    id: 't1',
-    title: 'Helping Children Build Daily Routines',
-    description: 'Simple ways for parents to create calmer mornings and more predictable study habits.',
-    duration: '08:24',
-    url: 'https://www.youtube.com/watch?v=ZToicYcHIOU',
-    icon: 'family-restroom',
-  },
-  {
-    id: 't2',
-    title: 'Positive Reinforcement at Home',
-    description: 'Learn how praise, structure and consistency can improve behaviour without pressure.',
-    duration: '06:40',
-    url: 'https://www.youtube.com/watch?v=68bWJYBv4X8',
-    icon: 'thumb-up-alt',
-  },
-  {
-    id: 't3',
-    title: 'Supporting Exam Readiness',
-    description: 'A short guide to helping children manage revision, breaks, and confidence before tests.',
-    duration: '10:12',
-    url: 'https://www.youtube.com/watch?v=6M0kQ1m2f3U',
-    icon: 'school',
-  },
-  {
-    id: 't4',
-    title: 'Healthy Screen-Time Boundaries',
-    description: 'Practical ideas for balancing device use with homework, sleep, and offline play.',
-    duration: '07:18',
-    url: 'https://www.youtube.com/watch?v=QK4qBu4jWeQ',
-    icon: 'devices',
-  },
-];
+/* ─── Loading skeleton ─── */
+function TutorialCardSkeleton() {
+  return (
+    <View style={styles.videoCard}>
+      <View style={styles.skeletonCardBody}>
+        <SkeletonBox width="100%" height={190} radius={borderRadius.xl} />
+        <SkeletonBox width="80%" height={18} radius={6} style={styles.skeletonGap16} />
+        <SkeletonBox width="100%" height={12} radius={4} style={styles.skeletonGap10} />
+        <SkeletonBox width="60%" height={12} radius={4} style={styles.skeletonGap8} />
+      </View>
+      <SkeletonShimmer />
+    </View>
+  );
+}
 
 const TutorialsScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
+  const { showToast } = useToast();
+
+  const [tutorials, setTutorials] = useState<Tutorial[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -92,6 +79,39 @@ const TutorialsScreen: React.FC = () => {
     [insets.bottom]
   );
 
+  // Self-contained: updates state + toasts on failure (never rejects), so it's
+  // safe for initial load, retry, and pull-to-refresh.
+  const loadTutorials = useCallback(() => {
+    return tutorialsService
+      .getParentTutorials()
+      .then((list) => {
+        setTutorials(list);
+        setError(false);
+      })
+      .catch((err) => {
+        setError(true);
+        showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 4000 });
+      });
+  }, [showToast]);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    loadTutorials().finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [loadTutorials]);
+
+  const { refreshing, onRefresh } = usePullToRefresh(loadTutorials);
+
+  const retry = useCallback(() => {
+    setLoading(true);
+    loadTutorials().finally(() => setLoading(false));
+  }, [loadTutorials]);
+
   const openTutorial = React.useCallback(async (url: string) => {
     await Linking.openURL(url);
   }, []);
@@ -114,13 +134,46 @@ const TutorialsScreen: React.FC = () => {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPad }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
 
         <View style={styles.sectionWrap}>
-
-          {TUTORIAL_VIDEOS.map((video, index) => (
+          {loading && tutorials.length === 0 ? (
+            <>
+              <TutorialCardSkeleton />
+              <TutorialCardSkeleton />
+              <TutorialCardSkeleton />
+            </>
+          ) : error && tutorials.length === 0 ? (
+            <View style={styles.stateBlock}>
+              <View style={styles.stateIconOrb}>
+                <Icon name="cloud-off" size={30} color={colors.primary} />
+              </View>
+              <Text style={styles.stateTitle}>Couldn&apos;t load tutorials</Text>
+              <Text style={styles.stateSubtitle}>
+                Please check your connection and try again.
+              </Text>
+              <Pressable
+                onPress={retry}
+                style={({ pressed }) => [styles.retryBtn, pressed && styles.retryBtnPressed]}
+              >
+                <Text style={styles.retryBtnText}>Retry</Text>
+              </Pressable>
+            </View>
+          ) : tutorials.length === 0 ? (
+            <View style={styles.stateBlock}>
+              <View style={styles.stateIconOrb}>
+                <Icon name="ondemand-video" size={30} color={colors.primary} />
+              </View>
+              <Text style={styles.stateTitle}>No tutorials yet</Text>
+              <Text style={styles.stateSubtitle}>
+                New video guides for parents will appear here. Pull down to refresh.
+              </Text>
+            </View>
+          ) : (
+          tutorials.map((video, index) => (
             <Animated.View
               key={video.id}
               entering={FadeInDown.delay(index * 70).springify().damping(18).stiffness(220)}
@@ -178,7 +231,8 @@ const TutorialsScreen: React.FC = () => {
                 </View>
               </Card>
             </Animated.View>
-          ))}
+          ))
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -454,6 +508,63 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  /* ─── Skeleton ─── */
+  skeletonCardBody: {
+    padding: spacing.md,
+  },
+  skeletonGap16: {
+    marginTop: spacing.md,
+  },
+  skeletonGap10: {
+    marginTop: 10,
+  },
+  skeletonGap8: {
+    marginTop: 8,
+  },
+  /* ─── Empty / error states ─── */
+  stateBlock: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.lg,
+    marginHorizontal: spacing.lg,
+    gap: spacing.sm,
+  },
+  stateIconOrb: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.lavenderSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
+  },
+  stateTitle: {
+    ...textStyles.headingMedium,
+    color: colors.ink,
+    fontWeight: '800',
+  },
+  stateSubtitle: {
+    ...textStyles.bodyMedium,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 21,
+  },
+  retryBtn: {
+    marginTop: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xl,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.primary,
+  },
+  retryBtnPressed: {
+    opacity: 0.82,
+  },
+  retryBtnText: {
+    ...textStyles.bodyMedium,
+    fontWeight: '700',
+    color: colors.surface,
   },
 });
 

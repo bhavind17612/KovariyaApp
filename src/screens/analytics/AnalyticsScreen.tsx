@@ -15,7 +15,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
-import { AppGradientHeader } from '../../components';
+import { AppGradientHeader, AppRefreshControl } from '../../components';
+import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 import { useToast } from '../../context/ToastContext';
 import type { GoalWiseReport, MonthlyPdfReport } from '../../data/analyticsData';
 import {
@@ -68,19 +69,27 @@ const AnalyticsScreen: React.FC = () => {
 
 	const {
 		selectedChild,
-		bsi,
-		familyScore,
-		trust,
-		parentConsistency,
 		aspects,
-		dualTrend,
+		aspectsLoading,
+		aspectsError,
+		aspectPeriod,
+		setAspectPeriod,
+		trends,
+		trendsLoading,
+		trendsError,
+		trendPeriod,
+		setTrendPeriod,
 		counters,
+		countersLoading,
+		countersError,
 		guidance,
 		badges,
 		strengthsWeaknesses,
 		monthlyReport,
 		goalWiseReport,
 		heatmapData,
+		heatmapLoading,
+		heatmapError,
 		heatmapYear,
 		heatmapMonth,
 		prevMonth,
@@ -89,7 +98,16 @@ const AnalyticsScreen: React.FC = () => {
 		setSummaryPeriod,
 		bsiPeriod,
 		setBsiPeriod,
+		studentBsi,
+		bsiLoading,
+		bsiError,
+		scoreCards,
+		scoreCardsLoading,
+		scoreCardsError,
+		refreshAnalytics,
 	} = useAnalyticsData();
+
+	const { refreshing, onRefresh } = usePullToRefresh(refreshAnalytics);
 
 	/* Status bar management */
 	useFocusEffect(
@@ -146,32 +164,42 @@ const AnalyticsScreen: React.FC = () => {
 					s.scrollContent,
 					{ paddingBottom: scrollBottomPad },
 				]}
+				refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
 			>
 				{/* 1. BSI Hero Section */}
 				<BSIGaugeCard
-					bsi={bsi}
+					data={studentBsi}
+					loading={bsiLoading}
+					error={bsiError}
 					childName={selectedChild.name}
-					weakAreas={strengthsWeaknesses.weakAreas}
 					bsiPeriod={bsiPeriod}
 					onTogglePeriod={setBsiPeriod}
 				/>
 
 				{/* 2. Support KPI Gauges (3 semi-circles) */}
 				<SupportGauges
-					familyScore={familyScore}
-					trust={trust}
-					parentConsistency={parentConsistency}
+					data={scoreCards}
+					loading={scoreCardsLoading}
+					error={scoreCardsError}
 				/>
 
 				{/* Section divider */}
 				{/* <SectionDivider icon="tune" label="Detailed Breakdown" /> */}
 
 				{/* 3. Aspect Scores (5 round gauges) */}
-				<AspectScoreGrid aspects={aspects} />
+				<AspectScoreGrid
+					aspects={aspects}
+					loading={aspectsLoading}
+					error={aspectsError}
+					period={aspectPeriod}
+					onTogglePeriod={setAspectPeriod}
+				/>
 
 				{/* 4. Behaviour Heatmap (DBS Calendar) */}
 				<HeatmapCalendar
 					data={heatmapData}
+					loading={heatmapLoading}
+					error={heatmapError}
 					year={heatmapYear}
 					month={heatmapMonth}
 					onPrevMonth={prevMonth}
@@ -184,13 +212,19 @@ const AnalyticsScreen: React.FC = () => {
 
 				{/* 5. Progress Trends (Dual Line Chart) */}
 				<ProgressTrendsChart
-					data={dualTrend}
+					data={trends}
+					loading={trendsLoading}
+					error={trendsError}
+					period={trendPeriod}
+					onTogglePeriod={setTrendPeriod}
 					childName={selectedChild.name}
 				/>
 
 				{/* 6. Summary Counters (Stat Pills) */}
 				<SummaryStats
 					counters={counters}
+					loading={countersLoading}
+					error={countersError}
 					summaryPeriod={summaryPeriod}
 					onTogglePeriod={setSummaryPeriod}
 				/>

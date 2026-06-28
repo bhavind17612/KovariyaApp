@@ -26,6 +26,9 @@ import { InputField } from './InputField';
 import { DatePickerField } from './DatePickerField';
 import { PRESET_SCHOOLS } from '../data/schools';
 import { useToast } from '../context/ToastContext';
+import { studentsService } from '../services/studentsService';
+import type { UpdateStudentPayload, CreateStudentPayload } from '../services/studentsService';
+import { schoolsService } from '../services/schoolsService';
 import type { Child } from '../types';
 import { ageFromIsoDate, toIsoDate } from '../utils/age';
 import { formatAppDate } from '../utils/dateFormat';
@@ -36,6 +39,20 @@ const { height: SH } = Dimensions.get('window');
 const SHEET_CFG = { duration: 320, easing: Easing.out(Easing.cubic) };
 const GRADES = ['Kindergarten', ...Array.from({ length: 12 }, (_, i) => `Class ${i + 1}`)];
 const currentYear = new Date().getFullYear();
+
+/** Normalises a stored grade (e.g. "class5", "Class 5", "kg") to a GRADES entry. */
+function normalizeGrade(raw?: string | null): string {
+  if (!raw) return '';
+  const trimmed = raw.trim();
+  if (GRADES.includes(trimmed)) return trimmed;
+  if (/^(kg|kindergarten)$/i.test(trimmed)) return 'Kindergarten';
+  const match = trimmed.match(/(\d+)/);
+  if (match) {
+    const candidate = `Class ${match[1]}`;
+    if (GRADES.includes(candidate)) return candidate;
+  }
+  return '';
+}
 const GENDERS = [
   { key: 'male', label: 'Male', marker: 'B' },
   { key: 'female', label: 'Female', marker: 'G' },
@@ -211,18 +228,33 @@ type Props = {
   visible: boolean;
   onClose: () => void;
   onSubmit: (child: Child) => void;
+  /** When provided, the modal opens in edit mode and prefills this child. */
+  child?: Child | null;
 };
 
 export const AddChildModal = React.memo(function AddChildModal({
   visible,
   onClose,
   onSubmit,
+  child,
 }: Props) {
+  const isEdit = !!child;
   const { showToast } = useToast();
   const insets = useSafeAreaInsets();
-  const schools = useMemo(() => [...PRESET_SCHOOLS], []);
+  // Schools come from the API (with ids) so creating a child can send school_id.
+  // Falls back to the preset names if the request fails.
+  const [apiSchools, setApiSchools] = useState<{ id: string; name: string }[]>([]);
   const [extraSchools, setExtraSchools] = useState<string[]>([]);
-  const allSchools = useMemo(() => [...extraSchools, ...schools], [extraSchools, schools]);
+  const schoolNames = useMemo(
+    () => (apiSchools.length > 0 ? apiSchools.map((s) => s.name) : [...PRESET_SCHOOLS]),
+    [apiSchools]
+  );
+  const allSchools = useMemo(() => [...extraSchools, ...schoolNames], [extraSchools, schoolNames]);
+  const schoolIdByName = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const s of apiSchools) map[s.name] = s.id;
+    return map;
+  }, [apiSchools]);
 
   const [childName, setChildName] = useState('');
   const [dobIso, setDobIso] = useState(() => toIsoDate(new Date(currentYear - 8, 0, 1)));
@@ -248,6 +280,48 @@ export const AddChildModal = React.memo(function AddChildModal({
     setClassSec('');
     setStatus('active');
   }, []);
+
+  /** Loads form fields from a child (used in edit mode). */
+  const prefillFromChild = useCallback((c: Child) => {
+    setChildName(c.name ?? '');
+    if (c.dateOfBirth) setDobIso(c.dateOfBirth);
+    setGrade(normalizeGrade(c.grade));
+    setSchool(c.schoolName ?? '');
+    setGender(c.gender ?? null);
+    setClassSec(c.section ?? '');
+    setStatus(c.status === 'inactive' ? 'inactive' : 'active');
+    // Make sure a custom school value is selectable in the picker.
+    if (c.schoolName && !PRESET_SCHOOLS.includes(c.schoolName)) {
+      setExtraSchools((prev) => (prev.includes(c.schoolName!) ? prev : [c.schoolName!, ...prev]));
+    }
+  }, []);
+
+  // Prefill (edit) or reset (add) whenever the modal opens. In edit mode we also
+  // refresh from GET /students/:uuid so the form reflects the latest server data.
+  useEffect(() => {
+    if (!visible) return;
+    if (child) {
+      prefillFromChild(child);
+      let cancelled = false;
+      studentsService
+        .getStudent(child.id)
+        .then((fresh) => { if (!cancelled) prefillFromChild(fresh); })
+        .catch(() => {});
+      return () => { cancelled = true; };
+    }
+    resetForm();
+  }, [visible, child, prefillFromChild, resetForm]);
+
+  // Load the schools list (with ids) once the modal opens.
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    schoolsService
+      .getSchools()
+      .then((list) => { if (!cancelled) setApiSchools(list); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [visible]);
 
   const handleClose = useCallback(() => {
     if (isSubmitting) return;
@@ -280,35 +354,76 @@ export const AddChildModal = React.memo(function AddChildModal({
       return;
     }
 
-    setIsSubmitting(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const firstName = fullName.split(' ')[0];
 
-    setTimeout(() => {
-      const child: Child = {
-        id: `child-${Date.now()}`,
-        name: fullName,
-        firstName: fullName.split(' ')[0],
-        lastName: fullName.split(' ').slice(1).join(' ') || '',
-        age: ageFromIsoDate(dobIso),
-        dateOfBirth: dobIso,
+    // ── Add mode requires a real school id (school_id) ──
+    if (!child) {
+      const schoolId = schoolIdByName[school];
+      if (!schoolId) {
+        showToast({ type: 'error', message: 'Please pick a school from the list.' });
+        return;
+      }
+
+      setIsSubmitting(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+      const payload: CreateStudentPayload = {
+        full_name: fullName,
+        date_of_birth: dobIso,
         gender: gender === 'male' ? 'male' : 'female',
         grade,
         section: classSection,
-        schoolName: school,
-        status,
+        school_id: schoolId,
+        is_active: status === 'active',
       };
 
-      onSubmit(child);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      showToast({
-        type: 'success',
-        message: `${fullName.split(' ')[0]} was added to your family.`,
-      });
-      setIsSubmitting(false);
-      resetForm();
-      onClose();
-    }, 650);
-  }, [childName, classSec, dobIso, gender, grade, onClose, onSubmit, resetForm, school, showToast, status]);
+      studentsService
+        .createStudent(payload)
+        .then((created) => {
+          onSubmit(created);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          showToast({ type: 'success', message: `${firstName} was added to your family.` });
+          resetForm();
+          onClose();
+        })
+        .catch(() => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          showToast({ type: 'error', message: 'Could not add child. Please try again.' });
+        })
+        .finally(() => setIsSubmitting(false));
+      return;
+    }
+
+    setIsSubmitting(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    // ── Edit mode: PATCH the existing student ──
+    if (child) {
+      const payload: UpdateStudentPayload = {
+        full_name: fullName,
+        date_of_birth: dobIso,
+        gender: gender === 'male' ? 'male' : 'female',
+        class_name: grade,
+        section: classSection,
+        school_name: school,
+        is_active: status === 'active',
+      };
+
+      studentsService
+        .updateStudent(child.id, payload)
+        .then((updated) => {
+          onSubmit(updated);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          showToast({ type: 'success', message: `${firstName}'s details were updated.` });
+          onClose();
+        })
+        .catch(() => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          showToast({ type: 'error', message: 'Could not update child. Please try again.' });
+        })
+        .finally(() => setIsSubmitting(false));
+    }
+  }, [child, childName, classSec, dobIso, gender, grade, onClose, onSubmit, resetForm, school, schoolIdByName, showToast, status]);
 
   const isFormValid =
     childName.trim().length > 0 &&
@@ -347,8 +462,10 @@ export const AddChildModal = React.memo(function AddChildModal({
                     <Icon name="child-care" size={20} color={colors.surface} />
                   </View>
                   <View>
-                    <Text style={styles.headerTitle}>Add Child</Text>
-                    <Text style={styles.headerSub}>Same child details flow as onboarding</Text>
+                    <Text style={styles.headerTitle}>{isEdit ? 'Edit Child' : 'Add Child'}</Text>
+                    <Text style={styles.headerSub}>
+                      {isEdit ? "Update your child's details" : 'Same child details flow as onboarding'}
+                    </Text>
                   </View>
                 </View>
                 <Pressable
@@ -503,7 +620,7 @@ export const AddChildModal = React.memo(function AddChildModal({
                 ) : (
                   <>
                     <Text style={[styles.ctaText, !isFormValid && styles.ctaTextDisabled]}>
-                      Add Child
+                      {isEdit ? 'Save Changes' : 'Add Child'}
                     </Text>
                     {isFormValid ? <Icon name="check" size={20} color={colors.surface} /> : null}
                   </>
