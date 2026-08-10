@@ -673,7 +673,9 @@ const DashboardScreen: React.FC = () => {
   // Falls back to 'en' silently when no preference is saved.
   useFocusEffect(
     useCallback(() => {
-      languageService.getPreferredLanguage()
+      // Resolves the saved behaviour language, or English when none is set,
+      // so the rating sheet always has a languageId to fetch translations with.
+      languageService.getBehaviourLanguage()
         .then((pref) => {
           if (pref?.code) {
             setRatingLang(pref.code);
@@ -954,7 +956,7 @@ const DashboardScreen: React.FC = () => {
               ]}
             >
               <View style={styles.sdsCardTopRow}>
-                <Text style={[styles.sdsCardTitle, { color: sdsMood.titleColor }]}>BSI Score</Text>
+                <Text style={[styles.sdsCardTitle, { color: sdsMood.titleColor }]}>DBS Score</Text>
                 <View style={[styles.sdsMoodBadge, { backgroundColor: sdsMood.badgeBg }]}>
                   <Icon name={sdsMood.badgeIcon} size={15} color={sdsMood.badgeText} />
                   <Text style={[styles.sdsMoodBadgeText, { color: sdsMood.badgeText }]}>

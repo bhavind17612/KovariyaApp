@@ -10,12 +10,21 @@ export interface ApiLanguage {
   flag_image: string;
 }
 
-/** Response body of GET /parent/preferences/language */
-export interface LanguagePreferenceResponse {
-  language_id: number;
-  code: string;
-  name: string;
+/** The saved behaviour language object, present only once the parent picks one. */
+export interface BehaviourLanguage {
+  id: number;
+  language_code: string;
+  name?: string;
   native_name?: string;
+}
+
+/**
+ * Response body of GET /parent/preferences/language.
+ * `behaviour_language` is null until the parent explicitly sets one.
+ */
+export interface LanguagePreferenceResponse {
+  behaviour_language: BehaviourLanguage | null;
+  is_language_set: boolean;
 }
 
 /** Request body of POST /parent/preferences/language */

@@ -41,7 +41,7 @@ import {
   type MentorMissionTimelineEntry,
   type MentorMission,
 } from '../data/mentorMissions';
-import { formatAppDate } from '../utils/dateFormat';
+import { formatAppDate, formatAppDateTime } from '../utils/dateFormat';
 
 type Props = {
   route: {
@@ -55,6 +55,12 @@ const BADGE_REWARD_IMAGES = {
   respect: require('../../assets/badges/respect.webp'),
   responsibility: require('../../assets/badges/responsibility.webp'),
 };
+
+/** Android's blur is noticeably stronger, so it needs a smaller radius to match iOS. */
+const BADGE_BLUR_RADIUS = Platform.OS === 'ios' ? 18 : 12;
+
+/** Native ratio of the badge artwork — keeps the frame crop-free. */
+const BADGE_ART_RATIO = 1099 / 1431;
 
 export default function MissionDetailScreen({ route }: Props) {
   const { mission } = route.params;
@@ -82,6 +88,8 @@ export default function MissionDetailScreen({ route }: Props) {
   const dailyPal = dailyFloatingPalette(dailyToday);
   const typeVisual = missionTypeChipStyle(mission.missionType);
   const isMissionComplete = mission.progressPercent >= 100;
+  // Proof upload is only available when the mission explicitly allows it.
+  const canUploadProof = mission.allowUploadProof === true;
 
   const rewardBadge = mission.rewardBadge;
   const rewardBadgeImage = rewardBadge ? BADGE_REWARD_IMAGES[rewardBadge.key] : undefined;
@@ -105,7 +113,7 @@ export default function MissionDetailScreen({ route }: Props) {
         const entry = item as MentorMissionTimelineEntry;
         return {
           label: entry.label ?? '',
-          dateTime: entry.dateTime ?? '',
+          dateTime: formatAppDateTime(entry.datetime ?? ''),
         };
       }),
     [mission.timeline]
@@ -242,27 +250,64 @@ export default function MissionDetailScreen({ route }: Props) {
                   isMissionComplete ? styles.rewardPanelEarned : styles.rewardPanelLocked,
                 ]}
               >
-                <View style={styles.rewardPanelCopy}>
-                  <Text
-                    style={[
-                      styles.rewardPanelKicker,
-                      { color: isMissionComplete ? colors.growth : colors.accent },
-                    ]}
-                  >
-                    {isMissionComplete ? 'Badge earned' : 'Reward on completion'}
-                  </Text>
-                  <Text style={styles.rewardPanelTitle}>{rewardBadge.name} Badge</Text>
-                  <Text style={styles.rewardPanelDesc}>{rewardBadge.description}</Text>
-                </View>
+                <Text
+                  style={[
+                    styles.rewardPanelKicker,
+                    { color: isMissionComplete ? colors.growth : colors.accent },
+                  ]}
+                >
+                  {isMissionComplete ? 'Badge earned' : 'Reward on completion'}
+                </Text>
+
                 {rewardBadgeImage ? (
                   <View style={styles.rewardBadgeFrame}>
                     <Image
                       source={rewardBadgeImage}
                       style={styles.rewardBadgeImage}
-                      resizeMode="contain"
+                      resizeMode="cover"
+                      // Keep the artwork a mystery until the mission is finished.
+                      blurRadius={isMissionComplete ? 0 : BADGE_BLUR_RADIUS}
                     />
+                    {!isMissionComplete ? (
+                      <View pointerEvents="none" style={styles.rewardBadgeLockLayer}>
+                        <View style={styles.rewardBadgeScrim} />
+                        <View style={styles.rewardLockCircle}>
+                          <Icon name="lock" size={20} color={colors.surface} />
+                        </View>
+                      </View>
+                    ) : null}
                   </View>
                 ) : null}
+
+                <Text style={styles.rewardPanelTitle}>{rewardBadge.name} Badge</Text>
+                <Text style={styles.rewardPanelDesc}>{rewardBadge.description}</Text>
+
+                <View
+                  style={[
+                    styles.rewardStatusPill,
+                    {
+                      backgroundColor: isMissionComplete
+                        ? 'rgba(63, 169, 122, 0.14)'
+                        : 'rgba(232, 160, 74, 0.16)',
+                    },
+                  ]}
+                >
+                  <Icon
+                    name={isMissionComplete ? 'verified' : 'lock-outline'}
+                    size={14}
+                    color={isMissionComplete ? colors.growth : colors.accent}
+                  />
+                  <Text
+                    style={[
+                      styles.rewardStatusPillText,
+                      { color: isMissionComplete ? colors.growth : colors.accent },
+                    ]}
+                  >
+                    {isMissionComplete
+                      ? 'Unlocked · added to the collection'
+                      : `Unlocks at 100% · ${mission.progressPercent}% done`}
+                  </Text>
+                </View>
               </LinearGradient>
             ) : null}
           </View>
@@ -448,7 +493,8 @@ export default function MissionDetailScreen({ route }: Props) {
             })}
           </View>
         </Card>
-        {/* ── Upload Proof Card ────────────────────────────────── */}
+        {/* ── Upload Proof Card (only when the mission allows it) ── */}
+        {canUploadProof ? (
         <Card variant="elevated" padding={0} style={styles.proofCard}>
           <View style={styles.proofHeader}>
             <View style={styles.sectionIconOrb}>
@@ -511,6 +557,7 @@ export default function MissionDetailScreen({ route }: Props) {
             </TouchableOpacity>
           )}
         </Card>
+        ) : null}
 
         {/* ── Picker Action Sheet ──────────────────────────────── */}
         <Modal
@@ -689,11 +736,11 @@ const styles = StyleSheet.create({
     marginVertical: 4,
   },
   rewardPanel: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.xs,
     marginTop: spacing.md,
-    padding: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
     borderRadius: borderRadius.large,
     borderWidth: StyleSheet.hairlineWidth,
   },
@@ -704,31 +751,63 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(63, 169, 122, 0.28)',
   },
   rewardBadgeFrame: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 128,
+    aspectRatio: BADGE_ART_RATIO,
+    borderRadius: borderRadius.large,
+    overflow: 'hidden',
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs,
     backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.7)',
     flexShrink: 0,
     ...Platform.select({
       ios: {
         shadowColor: colors.accent,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.12,
-        shadowRadius: 10,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.18,
+        shadowRadius: 14,
       },
       android: { elevation: 2 },
       default: {},
     }),
   },
   rewardBadgeImage: {
-    width: 52,
-    height: 52,
+    width: '100%',
+    height: '100%',
   },
-  rewardPanelCopy: {
-    flex: 1,
-    minWidth: 0,
+  rewardBadgeLockLayer: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rewardBadgeScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(13, 13, 13, 0.28)',
+  },
+  rewardLockCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(13, 13, 13, 0.55)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.35)',
+  },
+  rewardStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: spacing.xs,
+    paddingVertical: 6,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.full,
+  },
+  rewardStatusPillText: {
+    fontFamily: typography.fontFamily.primary,
+    fontSize: typography.fontSize.xs,
+    fontWeight: '700',
   },
   rewardPanelKicker: {
     fontFamily: typography.fontFamily.primary,
@@ -742,6 +821,7 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontWeight: '800',
     marginTop: 2,
+    textAlign: 'center',
   },
   rewardPanelDesc: {
     ...textStyles.caption,
@@ -749,6 +829,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 18,
     marginTop: 2,
+    textAlign: 'center',
+    paddingHorizontal: spacing.xs,
   },
   sectionCard: {
     marginVertical: spacing.xs,

@@ -18,6 +18,8 @@ export interface Child {
   /** Section letter e.g. A, B, C */
   section?: string;
   schoolName?: string;
+  /** Backend school lookup id (detail endpoint returns this instead of the name). */
+  schoolId?: string;
   /** School-issued admission / roll number */
   admissionNumber?: string;
   status?: ChildSchoolStatus;

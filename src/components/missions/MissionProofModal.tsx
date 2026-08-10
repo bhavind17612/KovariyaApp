@@ -13,6 +13,7 @@ import * as ImagePicker from 'expo-image-picker';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { Button } from '../Button';
 import { useToast } from '../../context/ToastContext';
+import { ToastPortalHost } from '../../context/ToastPortal';
 import { borderRadius, colors, shadows, spacing, textStyles } from '../../theme';
 
 type Props = {
@@ -169,6 +170,9 @@ export function MissionProofModal({ visible, submitting, onClose, onSubmit }: Pr
             </View>
           </View>
         </View>
+
+        {/* Lets toasts raised from this sheet draw inside the sheet's own window on Android. */}
+        <ToastPortalHost />
       </View>
     </Modal>
   );

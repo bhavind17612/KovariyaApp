@@ -26,6 +26,7 @@ import { InputField } from './InputField';
 import { DatePickerField } from './DatePickerField';
 import { PRESET_SCHOOLS } from '../data/schools';
 import { useToast } from '../context/ToastContext';
+import { ToastPortalHost } from '../context/ToastPortal';
 import { studentsService } from '../services/studentsService';
 import type { UpdateStudentPayload, CreateStudentPayload } from '../services/studentsService';
 import { schoolsService } from '../services/schoolsService';
@@ -219,11 +220,6 @@ function SchoolSheet({
   );
 }
 
-const STATUS_OPTS = [
-  { key: 'active', label: 'Active', marker: 'On' },
-  { key: 'inactive', label: 'Inactive', marker: 'Off' },
-];
-
 type Props = {
   visible: boolean;
   onClose: () => void;
@@ -249,7 +245,19 @@ export const AddChildModal = React.memo(function AddChildModal({
     () => (apiSchools.length > 0 ? apiSchools.map((s) => s.name) : [...PRESET_SCHOOLS]),
     [apiSchools]
   );
-  const allSchools = useMemo(() => [...extraSchools, ...schoolNames], [extraSchools, schoolNames]);
+  // Dedupe so a school never appears twice (e.g. the child's school is both a
+  // custom "extra" and already present in the API list).
+  const allSchools = useMemo(() => {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const name of [...extraSchools, ...schoolNames]) {
+      if (name && !seen.has(name)) {
+        seen.add(name);
+        result.push(name);
+      }
+    }
+    return result;
+  }, [extraSchools, schoolNames]);
   const schoolIdByName = useMemo(() => {
     const map: Record<string, string> = {};
     for (const s of apiSchools) map[s.name] = s.id;
@@ -279,6 +287,7 @@ export const AddChildModal = React.memo(function AddChildModal({
     setGender(null);
     setClassSec('');
     setStatus('active');
+    setExtraSchools([]);
   }, []);
 
   /** Loads form fields from a child (used in edit mode). */
@@ -322,6 +331,14 @@ export const AddChildModal = React.memo(function AddChildModal({
       .catch(() => {});
     return () => { cancelled = true; };
   }, [visible]);
+
+  // The detail endpoint returns school_id (not a name), so once the schools
+  // list loads, resolve the id to a name to prefill the picker in edit mode.
+  useEffect(() => {
+    if (!visible || !child?.schoolId || apiSchools.length === 0) return;
+    const match = apiSchools.find((s) => String(s.id) === String(child.schoolId));
+    if (match) setSchool((prev) => prev || match.name);
+  }, [visible, child, apiSchools]);
 
   const handleClose = useCallback(() => {
     if (isSubmitting) return;
@@ -519,22 +536,25 @@ export const AddChildModal = React.memo(function AddChildModal({
               </Section>
 
               <Section icon="class" iconBg={colors.peachSoft} iconColor={colors.accent} label="School Details">
-                <Pressable
-                  style={styles.inputRow}
-                  onPress={() => {
-                    setShowGrade(true);
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
-                >
-                  <Icon name="school" size={20} color={colors.textMuted} />
-                  <Text style={[styles.inputText, !grade && styles.inputMuted]}>
-                    {grade || 'Select standard...'}
-                  </Text>
-                  <Icon name="keyboard-arrow-down" size={20} color={colors.textSecondary} />
-                </Pressable>
+                <View>
+                  <Text style={styles.fieldLabel}>Select Standard</Text>
+                  <Pressable
+                    style={styles.inputRow}
+                    onPress={() => {
+                      setShowGrade(true);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                  >
+                    <Icon name="school" size={20} color={colors.textMuted} />
+                    <Text style={[styles.inputText, !grade && styles.inputMuted]}>
+                      {grade || 'Select standard...'}
+                    </Text>
+                    <Icon name="keyboard-arrow-down" size={20} color={colors.textSecondary} />
+                  </Pressable>
+                </View>
 
                 <InputField
-                  label="Class / Section"
+                  label="Class / Sections"
                   value={classSec}
                   onChangeText={setClassSec}
                   placeholder="e.g. 5-A or Section B"
@@ -545,19 +565,22 @@ export const AddChildModal = React.memo(function AddChildModal({
               </Section>
 
               <Section icon="school" iconBg={colors.skySoft} iconColor={colors.info} label="School">
-                <Pressable
-                  style={styles.inputRow}
-                  onPress={() => {
-                    setShowSchool(true);
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
-                >
-                  <Icon name="account-balance" size={20} color={colors.textMuted} />
-                  <Text style={[styles.inputText, !school && styles.inputMuted]} numberOfLines={1}>
-                    {school || 'Select your school...'}
-                  </Text>
-                  <Icon name="keyboard-arrow-down" size={20} color={colors.textSecondary} />
-                </Pressable>
+                <View>
+                  <Text style={styles.fieldLabel}>Select School</Text>
+                  <Pressable
+                    style={styles.inputRow}
+                    onPress={() => {
+                      setShowSchool(true);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                  >
+                    <Icon name="account-balance" size={20} color={colors.textMuted} />
+                    <Text style={[styles.inputText, !school && styles.inputMuted]} numberOfLines={1}>
+                      {school || 'Select your school...'}
+                    </Text>
+                    <Icon name="keyboard-arrow-down" size={20} color={colors.textSecondary} />
+                  </Pressable>
+                </View>
               </Section>
 
               <Section icon="wc" iconBg={colors.mintSoft} iconColor={colors.growth} label="Gender">
@@ -570,29 +593,6 @@ export const AddChildModal = React.memo(function AddChildModal({
                         style={[styles.genderChip, isActive && styles.genderChipActive]}
                         onPress={() => {
                           setGender(item.key);
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        }}
-                      >
-                        <Text style={styles.genderEmoji}>{item.marker}</Text>
-                        <Text style={[styles.genderLabel, isActive && styles.genderLabelActive]}>
-                          {item.label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </Section>
-
-              <Section icon="toggle-on" iconBg={colors.lavenderSoft} iconColor={colors.primary} label="Status">
-                <View style={styles.genderRow}>
-                  {STATUS_OPTS.map((item) => {
-                    const isActive = status === item.key;
-                    return (
-                      <Pressable
-                        key={item.key}
-                        style={[styles.genderChip, isActive && styles.genderChipActive]}
-                        onPress={() => {
-                          setStatus(item.key);
                           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                         }}
                       >
@@ -628,6 +628,9 @@ export const AddChildModal = React.memo(function AddChildModal({
               </Pressable>
             </ScrollView>
           </SafeAreaView>
+
+          {/* Lets toasts raised from this modal draw inside the modal's own window on Android. */}
+          <ToastPortalHost />
         </KeyboardAvoidingView>
       </Modal>
 
@@ -783,6 +786,12 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     paddingTop: spacing.xs,
     gap: spacing.md,
+  },
+  // Matches the label styling used inside InputField.
+  fieldLabel: {
+    ...textStyles.bodyMedium,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
   },
   inputRow: {
     flexDirection: 'row',

@@ -13,9 +13,11 @@ interface StudentApiRow {
   date_of_birth: string | null;
   gender: 'male' | 'female' | 'other' | null;
   grade: string | null;
-  class_name: string | null;
+  class_name?: string | null;
   section: string | null;
-  school_name: string | null;
+  school_name?: string | null;
+  /** The detail endpoint returns the school id (not its name). */
+  school_id?: number | string | null;
   admission_no: string | null;
   avatar_url: string | null;
   is_active: boolean;
@@ -75,6 +77,7 @@ function toChild(row: StudentApiRow): Child {
     grade: row.class_name ?? row.grade ?? undefined,
     section: row.section ?? undefined,
     schoolName: row.school_name ?? undefined,
+    schoolId: row.school_id != null ? String(row.school_id) : undefined,
     admissionNumber: row.admission_no ?? undefined,
     status: row.is_active ? 'active' : 'inactive',
   };
@@ -99,8 +102,13 @@ class StudentsService {
 
   /** Fetches the full detail for a single child by UUID. */
   async getStudent(uuid: string): Promise<Child> {
-    const response = await api.get<StudentApiRow>(ENDPOINTS.STUDENTS.DETAIL(uuid));
-    return toChild(response.data.data);
+    const response = await api.get<{ student: StudentApiRow } | StudentApiRow>(
+      ENDPOINTS.STUDENTS.DETAIL(uuid),
+    );
+    // The detail endpoint nests the row under `data.student`; the list does not.
+    const data = response.data.data as { student?: StudentApiRow } & StudentApiRow;
+    const row = data?.student ?? data;
+    return toChild(row);
   }
 
   /** Updates a child's details and returns the refreshed Child. */

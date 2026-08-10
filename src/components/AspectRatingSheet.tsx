@@ -32,6 +32,7 @@ import {
   type AspectRatingPayload,
 } from '../data/aspectRating';
 import { useToast } from '../context/ToastContext';
+import { ToastPortalHost } from '../context/ToastPortal';
 
 import { translationService } from '../services/translationService';
 import { behaviourService } from '../services/behaviourService';
@@ -89,7 +90,6 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
   // Fetch translations from the API whenever languageId changes.
   // No static fallback — the API is the sole source of truth.
   useEffect(() => {
-    console.log("herer", languageId)
     if (!languageId) {
       setApiTranslations(null);
       setTranslationFetchError(true);
@@ -99,10 +99,8 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
     setIsLoadingTranslations(true);
     setTranslationFetchError(false);
     setApiTranslations(null);
-    console.log("getting sheet translations");
     translationService.getRatingSheetTranslations(languageId)
       .then((data) => {
-        console.log('data ', data)
         setApiTranslations(data);
         setTranslationFetchError(false);
       })
@@ -474,11 +472,6 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
     return () => cancelAnimationFrame(id);
   }, [nextStepTooltipLabel, showSaveAndNext, measureNextStepPopover, aspectId]);
 
-  const title = useMemo(
-    () => (aspect ? `${aspect.name} · ${uiStrings.howWasBehaviour}` : ''),
-    [aspect, uiStrings]
-  );
-
   if (!aspect) {
     return null;
   }
@@ -500,9 +493,14 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
           >
             <View style={styles.grabber} />
             <View style={styles.sheetTitleRow}>
-              <Text style={styles.sheetTitle} numberOfLines={2}>
-                {title}
-              </Text>
+              <View style={styles.sheetTitleTextWrap}>
+                <Text style={styles.sheetTitle} numberOfLines={2}>
+                  {aspect.name}
+                </Text>
+                <Text style={styles.sheetSubtitle} numberOfLines={2}>
+                  {uiStrings.howWasBehaviour}
+                </Text>
+              </View>
               <Pressable
                 onPress={onClose}
                 style={({ pressed }) => [
@@ -652,7 +650,13 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
                             ]}
                             accessibilityRole="checkbox"
                             accessibilityState={{ checked: on }}
+                            accessibilityLabel={c.chip_text}
                           >
+                            {c.emoji ? (
+                              <Text style={styles.chipEmoji} allowFontScaling={false}>
+                                {c.emoji}
+                              </Text>
+                            ) : null}
                             <Text
                               style={[
                                 isPos ? styles.chipText : styles.chipTextNeg,
@@ -794,6 +798,9 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
               </>
             ) : null}
           </View>
+
+          {/* Lets toasts raised from this sheet draw inside the sheet's own window on Android. */}
+          <ToastPortalHost />
         </View>
       </Modal>
 
@@ -849,13 +856,23 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginBottom: spacing.xs,
   },
-  sheetTitle: {
-    ...textStyles.headingMedium,
+  sheetTitleTextWrap: {
     flex: 1,
     minWidth: 0,
-    fontSize: 18,
+  },
+  sheetTitle: {
+    ...textStyles.headingMedium,
+    fontSize: 24,
     fontWeight: '800',
     color: colors.ink,
+    letterSpacing: -0.3,
+  },
+  sheetSubtitle: {
+    ...textStyles.bodyMedium,
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontWeight: '500',
+    marginTop: 2,
   },
   closeButton: {
     minWidth: 40,
@@ -994,12 +1011,20 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
     marginBottom: spacing.xs,
     borderRadius: borderRadius.full,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
+  },
+  chipEmoji: {
+    // Fixed size keeps chips the same height regardless of the OS emoji metrics.
+    fontSize: 14,
+    lineHeight: 18,
   },
   chipPressed: {
     opacity: 0.88,

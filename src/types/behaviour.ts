@@ -49,6 +49,8 @@ export interface AspectReasonChip {
   id: number;
   chip_text: string;
   sentiment: 'positive' | 'negative';
+  /** Leading emoji shown on the chip. May be absent or null for older records. */
+  emoji?: string | null;
   sort_order?: number;
   [key: string]: unknown;
 }

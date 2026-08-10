@@ -66,9 +66,10 @@ export function setupInterceptors(client: AxiosInstance): void {
         }
       }
 
-      if (ENV.isDev) {
+      // if (ENV.isDev) {
         console.log(`[API →] ${config.method?.toUpperCase()} ${config.url}`);
-      }
+      // }
+      console.log('config.baseUlr ss',config.baseURL)
       console.log('config.headers ss',config.headers)
       return config;
     },

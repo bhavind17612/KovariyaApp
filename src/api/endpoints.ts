@@ -48,6 +48,8 @@ export const ENDPOINTS = {
     PROGRESS_TRENDS: (studentUuid: string) => `/api/v1/students/${studentUuid}/progress-trends`,
     /** GET ?period=weekly|monthly — activity snapshot counters */
     SUMMARY_STATS: (studentUuid: string) => `/api/v1/students/${studentUuid}/summary-stats`,
+    /** GET — earnable badges + earned status for a student */
+    BADGES: (studentUuid: string) => `/api/v1/students/${studentUuid}/badges`,
   },
 
   GOALS: {

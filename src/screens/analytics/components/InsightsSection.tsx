@@ -53,7 +53,9 @@ const BORDER_MAP: Record<GuidanceItem['type'], string> = {
 const InsightsSection: React.FC<InsightsSectionProps> = ({
 	guidance,
 	strengthsWeaknesses: sw,
-	badges,
+	// Still received from AnalyticsScreen, but unused while section 7c is hidden.
+	// Rename back to `badges` when un-commenting that block.
+	badges: _badges,
 	childName,
 }) => {
 	return (
@@ -189,7 +191,12 @@ const InsightsSection: React.FC<InsightsSectionProps> = ({
 				</Card>
 			</Animated.View>
 
-			{/* 7c. Badges & Achievements */}
+			{/*
+				7c. Badges & Achievements — TEMPORARILY HIDDEN.
+				Badges now live on their own screen (BadgesScreen). Uncomment this
+				block to bring the section back; the `badges` prop, its type and the
+				badge styles below are all still in place.
+
 			<Animated.View
 				entering={FadeInDown.delay(640).springify().damping(18).stiffness(220)}
 				style={[s.shadowWrapper, { marginBottom: spacing.sm }]}
@@ -258,6 +265,7 @@ const InsightsSection: React.FC<InsightsSectionProps> = ({
 					</View>
 				</Card>
 			</Animated.View>
+			*/}
 		</>
 	);
 };

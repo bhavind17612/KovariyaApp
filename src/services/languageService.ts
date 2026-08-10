@@ -35,16 +35,38 @@ class LanguageService {
       ENDPOINTS.LANGUAGE.PREFERENCE,
     );
     const data = response.data.data;
-    if (!data?.code) {
+    const lang = data?.behaviour_language;
+    // No behaviour language chosen yet — caller should fall back to a default.
+    if (!data?.is_language_set || !lang?.id || !lang?.language_code) {
       return null;
     }
 
     const pref: CachedLanguagePreference = {
-      languageId: data.language_id,
-      code: data.code,
+      languageId: lang.id,
+      code: lang.language_code,
     };
     await storage.set(STORAGE_KEYS.LANGUAGE_PREFERENCE, pref);
     return pref;
+  }
+
+  /**
+   * Resolves the language to use for behaviour rating. Returns the parent's
+   * saved preference, or falls back to English (from the languages list) when
+   * none is set. The English fallback is intentionally NOT cached, so it is
+   * superseded the moment the parent picks a real preference.
+   */
+  async getBehaviourLanguage(): Promise<CachedLanguagePreference | null> {
+    const pref = await this.getPreferredLanguage();
+    if (pref?.code) {
+      return pref;
+    }
+
+    const languages = await this.getLanguages();
+    const english =
+      languages.find((l) => l.language_code?.toLowerCase() === 'en') ?? languages[0];
+    return english
+      ? { languageId: english.id, code: english.language_code }
+      : null;
   }
 
   /**

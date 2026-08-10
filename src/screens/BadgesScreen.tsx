@@ -13,23 +13,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { setStatusBarStyle } from 'expo-status-bar';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, {
-  Easing,
-  FadeIn,
-  FadeInDown,
-  useAnimatedStyle,
-  useSharedValue,
-  withDelay,
-  withRepeat,
-  withTiming,
-} from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { AppGradientHeader, AppRefreshControl, Card, SkeletonBox, SkeletonShimmer } from '../components';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { useToast } from '../context/ToastContext';
-import { rewardsService } from '../services/rewardsService';
+import { useChildren } from '../context/ChildrenContext';
+import { badgesService } from '../services/badgesService';
 import { getDisplayMessage } from '../utils/errorParser';
-import type { Reward } from '../types/reward';
+import type { StudentBadge } from '../types/badge';
 import {
   borderRadius,
   colors,
@@ -37,6 +29,9 @@ import {
   spacing,
   textStyles,
 } from '../theme';
+
+/** Android's blur is noticeably stronger, so it needs a smaller radius to match iOS. */
+const BADGE_BLUR_RADIUS = Platform.OS === 'ios' ? 20 : 14;
 
 /* ─── Reward image (remote, with graceful fallback) ─── */
 
@@ -63,31 +58,11 @@ function RewardImage({ uri, earned }: { uri: string | null; earned: boolean }) {
 /* ─── Reward tile ─── */
 
 type RewardTileProps = {
-  reward: Reward;
+  reward: StudentBadge;
   index: number;
 };
 
 const RewardTile: React.FC<RewardTileProps> = ({ reward, index }) => {
-  const shineProgress = useSharedValue(0);
-
-  // A slow sweep across every tile makes the rewards feel coveted/desirable.
-  useEffect(() => {
-    shineProgress.value = withDelay(
-      500 + index * 160,
-      withRepeat(
-        withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.cubic) }),
-        -1,
-        false
-      )
-    );
-  }, [index, shineProgress]);
-
-  const shineStyle = useAnimatedStyle(() => ({
-    // Fade in toward the middle of the sweep, out at the edges.
-    opacity: 1 - Math.abs(shineProgress.value - 0.5) * 2,
-    transform: [{ translateX: -100 + shineProgress.value * 200 }, { rotate: '22deg' }],
-  }));
-
   return (
     <Animated.View
       entering={FadeInDown.delay(120 + index * 70)
@@ -97,19 +72,40 @@ const RewardTile: React.FC<RewardTileProps> = ({ reward, index }) => {
       style={styles.tileWrapper}
     >
       <Card variant="elevated" padding={0} style={styles.tileCard}>
-        {/* Full-bleed reward image fills the whole card */}
+        {/* Full-bleed reward image fills the whole card. Earned rewards show it
+            as-is — nothing is drawn over the artwork. */}
         <RewardImage uri={reward.imageUrl} earned={reward.earned} />
 
-        {reward.earned ? (
-          /* Light sweep makes earned rewards feel celebrated */
-          <Animated.View pointerEvents="none" style={[styles.shineSweep, shineStyle]} />
-        ) : (
-          /* Locked overlay on rewards not yet earned */
+        {reward.earned ? null : (
+          /* Locked overlay: blurred badge art + scrim keeps the mission text readable */
           <View pointerEvents="none" style={styles.lockOverlay}>
-            <View style={styles.lockCircle}>
-              <Icon name="lock" size={22} color={colors.surface} />
+            {reward.imageUrl ? (
+              <Image
+                source={{ uri: reward.imageUrl }}
+                style={StyleSheet.absoluteFill}
+                blurRadius={BADGE_BLUR_RADIUS}
+                resizeMode="cover"
+              />
+            ) : null}
+            <LinearGradient
+              colors={['rgba(13,13,13,0.30)', 'rgba(13,13,13,0.68)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.lockContent}>
+              <View style={styles.lockCircle}>
+                <Icon name="lock" size={22} color={colors.surface} />
+              </View>
+              <Text style={styles.lockText} numberOfLines={2}>
+                {reward.label}
+              </Text>
+              {reward.description ? (
+                <Text style={styles.lockMissionText} numberOfLines={3}>
+                  {reward.description}
+                </Text>
+              ) : null}
             </View>
-            <Text style={styles.lockText}>Locked</Text>
           </View>
         )}
       </Card>
@@ -205,8 +201,9 @@ function RewardsHero({ total, earned }: { total: number; earned: number }) {
 const BadgesScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
+  const { selectedChildId } = useChildren();
 
-  const [rewards, setRewards] = useState<Reward[]>([]);
+  const [rewards, setRewards] = useState<StudentBadge[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -230,8 +227,13 @@ const BadgesScreen: React.FC = () => {
   // Self-contained: updates state + toasts on failure (never rejects), so it's
   // safe to use directly for initial load, retry, and pull-to-refresh.
   const loadRewards = useCallback(() => {
-    return rewardsService
-      .getActiveRewards()
+    if (!selectedChildId) {
+      setRewards([]);
+      setError(false);
+      return Promise.resolve();
+    }
+    return badgesService
+      .getStudentBadges(selectedChildId)
       .then((list) => {
         setRewards(list);
         setError(false);
@@ -240,7 +242,7 @@ const BadgesScreen: React.FC = () => {
         setError(true);
         showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 4000 });
       });
-  }, [showToast]);
+  }, [selectedChildId, showToast]);
 
   // Initial load — keeps skeleton up until the first response resolves.
   useEffect(() => {
@@ -317,7 +319,7 @@ const BadgesScreen: React.FC = () => {
           ) : (
             <View style={styles.gridContainer}>
               {rewards.map((reward, index) => (
-                <RewardTile key={reward.uuid} reward={reward} index={index} />
+                <RewardTile key={reward.id} reward={reward} index={index} />
               ))}
             </View>
           )}
@@ -461,19 +463,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.lavenderSoft,
   },
-  shineSweep: {
-    position: 'absolute',
-    top: -28,
-    bottom: -28,
-    width: 26,
-    backgroundColor: 'rgba(255,255,255,0.45)',
-  },
   lockOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  lockContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing.xs,
-    backgroundColor: 'rgba(13,13,13,0.42)',
+    paddingHorizontal: spacing.sm,
   },
   lockCircle: {
     width: 44,
@@ -489,9 +489,25 @@ const styles = StyleSheet.create({
     ...textStyles.caption,
     color: colors.surface,
     fontWeight: '800',
+    fontSize: 13,
+    lineHeight: 17,
+    letterSpacing: 0.2,
+    textAlign: 'center',
+    marginTop: 2,
+    textShadowColor: 'rgba(0,0,0,0.55)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  lockMissionText: {
+    ...textStyles.caption,
+    color: 'rgba(255,255,255,0.88)',
+    fontWeight: '600',
     fontSize: 11,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
+    lineHeight: 15,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
 
   /* ─── Skeleton helpers ─── */

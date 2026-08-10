@@ -14,7 +14,7 @@ export type MentorMissionHistoryEntry = {
 
 export type MentorMissionTimelineEntry = {
   label: string;
-  dateTime: string;
+  datetime: string;
 };
 
 export type MentorMissionBadgeReward = {
@@ -35,6 +35,8 @@ export type MentorMission = {
   rewardBadge: MentorMissionBadgeReward | null;
   timeline: MentorMissionTimelineEntry[];
   completionHistory: MentorMissionHistoryEntry[];
+  /** When true, the parent may upload proof photos on the mission detail screen. */
+  allowUploadProof?: boolean;
 };
 
 export function getTodayIsoDate(): string {
@@ -56,6 +58,7 @@ export function resolveLifecycleStatus(m: MentorMission): MentorMissionLifecycle
     return 'completed';
   }
   const today = getTodayIsoDate();
+  console.log('ISO Date', today)
   if (m.endDate < today) {
     return 'expired';
   }
@@ -104,10 +107,10 @@ export const MENTOR_ASSIGNED_MISSIONS: MentorMission[] = [
       description: 'Complete this mission to earn the Respect badge.',
     },
     timeline: [
-      { label: 'Mentor assigned mission', dateTime: '2026-03-28 08:30' },
-      { label: 'Parent reviewed expectations', dateTime: '2026-03-28 19:10' },
-      { label: 'Daily check-ins active this week', dateTime: '2026-03-30 07:45' },
-      { label: 'Final review due on end date', dateTime: '2026-04-10 18:00' },
+      { label: 'Mentor assigned mission', datetime: '2026-03-28 08:30' },
+      { label: 'Parent reviewed expectations', datetime: '2026-03-28 19:10' },
+      { label: 'Daily check-ins active this week', datetime: '2026-03-30 07:45' },
+      { label: 'Final review due on end date', datetime: '2026-04-10 18:00' },
     ],
     completionHistory: [
       { date: getTodayIsoDate(), status: 'done' },
@@ -131,9 +134,9 @@ export const MENTOR_ASSIGNED_MISSIONS: MentorMission[] = [
       description: 'Finish this mission to unlock the Responsibility badge.',
     },
     timeline: [
-      { label: 'Mission started', dateTime: '2026-03-27 16:20' },
-      { label: 'Tutor notes shared with parent', dateTime: '2026-03-28 20:05' },
-      { label: 'Evidence upload required every two days', dateTime: '2026-03-29 18:30' },
+      { label: 'Mission started', datetime: '2026-03-27 16:20' },
+      { label: 'Tutor notes shared with parent', datetime: '2026-03-28 20:05' },
+      { label: 'Evidence upload required every two days', datetime: '2026-03-29 18:30' },
     ],
     completionHistory: [
       { date: '2026-03-27', status: 'done', note: 'Worksheet uploaded' },
@@ -156,10 +159,10 @@ export const MENTOR_ASSIGNED_MISSIONS: MentorMission[] = [
       description: 'Keep showing kindness to earn the Respect badge.',
     },
     timeline: [
-      { label: 'Mission assigned', dateTime: '2026-03-30 09:15' },
-      { label: 'Parent orientation complete', dateTime: '2026-03-30 20:40' },
-      { label: 'Journal phase in progress', dateTime: '2026-03-31 07:30' },
-      { label: 'Mentor review in week 2', dateTime: '2026-04-08 18:15' },
+      { label: 'Mission assigned', datetime: '2026-03-30 09:15' },
+      { label: 'Parent orientation complete', datetime: '2026-03-30 20:40' },
+      { label: 'Journal phase in progress', datetime: '2026-03-31 07:30' },
+      { label: 'Mentor review in week 2', datetime: '2026-04-08 18:15' },
     ],
     completionHistory: [
       { date: '2026-03-30', status: 'missed' },

@@ -22,6 +22,7 @@ function normalizeMission(m: MentorMission): MentorMission {
     rewardBadge: m.rewardBadge ?? null,
     timeline: Array.isArray(m.timeline) ? m.timeline : [],
     completionHistory: Array.isArray(m.completionHistory) ? m.completionHistory : [],
+    allowUploadProof: m.allowUploadProof ?? false,
   };
 }
 

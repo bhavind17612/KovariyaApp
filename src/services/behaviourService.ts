@@ -132,7 +132,6 @@ class BehaviourService {
           ? payload.negative.map((chip) => ({ ...chip, sentiment: 'negative' as const }))
           : []),
       ];
-    console.log('chips =', chips);
     return chips
       .filter((chip): chip is AspectReasonChip =>
         typeof chip === 'object' &&
@@ -141,6 +140,11 @@ class BehaviourService {
         typeof chip.chip_text === 'string' &&
         (chip.sentiment === 'positive' || chip.sentiment === 'negative')
       )
+      .map((chip) => ({
+        ...chip,
+        // Normalise to a non-empty string or null so the UI can render on truthiness.
+        emoji: typeof chip.emoji === 'string' && chip.emoji.trim() ? chip.emoji.trim() : null,
+      }))
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
   }
 

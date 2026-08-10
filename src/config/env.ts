@@ -2,8 +2,12 @@ import { Platform } from 'react-native';
 
 declare const __DEV__: boolean;
 
-const DEV_API_LOCAL =
-  Platform.OS === 'android' ? 'http://10.0.2.2:5000' : 'http://localhost:5000';
+const FALLBACK =
+  __DEV__
+    ? (Platform.OS === 'android'
+        ? 'http://10.0.2.2:5000'
+        : 'http://localhost:5000')
+    : '';
 
 /**
  * Safely reads an Expo public env var injected at build time.
@@ -28,12 +32,12 @@ export const ENV = {
    * In local dev, falls back to emulator-safe localhost.
    */
   API_BASE_URL:
-    readEnv('EXPO_PUBLIC_API_BASE_URL') ||
-    readEnv('EXPO_PUBLIC_AUTH_API_URL') ||
-    DEV_API_LOCAL,
+    process.env.EXPO_PUBLIC_API_BASE_URL ||
+    process.env.EXPO_PUBLIC_AUTH_API_URL ||
+    FALLBACK,
 
   APP_ENV:
-    readEnv('EXPO_PUBLIC_APP_ENV') ||
+    process.env.EXPO_PUBLIC_APP_ENV ||
     (__DEV__ ? 'development' : 'production'),
 
   isDev: __DEV__,
