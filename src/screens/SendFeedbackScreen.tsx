@@ -9,7 +9,7 @@ import {
   StatusBar as RNStatusBar,
   TextInput,
   KeyboardAvoidingView,
-  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import Animated, { FadeInDown, FadeInRight, ZoomIn } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,8 +25,18 @@ import {
 } from '../theme';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { setStatusBarStyle } from 'expo-status-bar';
+import { useToast } from '../context/ToastContext';
+import { feedbackService } from '../services/feedbackService';
+import { getDisplayMessage } from '../utils/errorParser';
 
-/* ─── Types ──────────────────────────────────────────────────────────── */
+/** The API accepts free text only, so the message must carry some substance. */
+const MIN_FEEDBACK_LENGTH = 10;
+
+/*
+  ─── Type / Experience / Topics — TEMPORARILY HIDDEN ──────────────────
+  POST /api/v1/feedback/parent takes a single `feedback` string, so none of
+  these selections have anywhere to go. The UI blocks are commented out further
+  down; restore these types and constants alongside them.
 
 type FeedbackType = {
   id: string;
@@ -38,8 +48,6 @@ type FeedbackType = {
 };
 
 type RatingLevel = 1 | 2 | 3 | 4 | 5;
-
-/* ─── Static data ────────────────────────────────────────────────────── */
 
 const FEEDBACK_TYPES: FeedbackType[] = [
   { id: 'suggestion', icon: 'lightbulb', label: 'Suggestion', emoji: '💡', color: colors.accent, bg: colors.peachSoft },
@@ -60,6 +68,7 @@ const TOPIC_TAGS = [
   'Dashboard', 'Ratings', 'Goals', 'Analytics',
   'Missions', 'Profile', 'Performance', 'Design', 'Other',
 ];
+*/
 
 /* ─── Main Screen ────────────────────────────────────────────────────── */
 
@@ -67,12 +76,11 @@ const SendFeedbackScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const inputRef = useRef<TextInput>(null);
+  const { showToast } = useToast();
 
   /* State */
-  const [selectedType, setSelectedType] = useState<string | null>(null);
-  const [rating, setRating] = useState<RatingLevel | null>(null);
-  const [selectedTopics, setSelectedTopics] = useState<Set<string>>(new Set());
   const [feedbackText, setFeedbackText] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
   const scrollBottomPad = useMemo(
@@ -80,21 +88,25 @@ const SendFeedbackScreen: React.FC = () => {
     [insets.bottom]
   );
 
-  const canSubmit = selectedType && rating && feedbackText.trim().length >= 10;
+  const canSubmit = feedbackText.trim().length >= MIN_FEEDBACK_LENGTH && !submitting;
 
-  const toggleTopic = useCallback((topic: string) => {
-    setSelectedTopics((prev) => {
-      const next = new Set(prev);
-      if (next.has(topic)) next.delete(topic);
-      else next.add(topic);
-      return next;
-    });
-  }, []);
-
-  const handleSubmit = useCallback(() => {
-    if (!canSubmit) return;
-    setSubmitted(true);
-  }, [canSubmit]);
+  const handleSubmit = useCallback(async () => {
+    const message = feedbackText.trim();
+    // Re-checked here rather than trusting `canSubmit`, so a stale closure can
+    // never post an empty body.
+    if (message.length < MIN_FEEDBACK_LENGTH || submitting) {
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await feedbackService.sendParentFeedback(message);
+      setSubmitted(true);
+    } catch (err) {
+      showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 4000 });
+    } finally {
+      setSubmitting(false);
+    }
+  }, [feedbackText, submitting, showToast]);
 
   useFocusEffect(
     useCallback(() => {
@@ -165,7 +177,12 @@ const SendFeedbackScreen: React.FC = () => {
           contentContainerStyle={[s.scrollContent, { paddingBottom: scrollBottomPad }]}
           keyboardShouldPersistTaps="handled"
         >
-          {/* ── Feedback type ─────────────────────────────────── */}
+          {/*
+            ── Type / Experience / Topics — TEMPORARILY HIDDEN ──────────
+            The feedback API takes only the free-text message, so these three
+            sections collect nothing that can be submitted. Uncomment this block
+            together with the types and constants near the top of the file.
+
           <Animated.View entering={FadeInDown.springify().damping(18).stiffness(220)}>
             <Card variant="elevated" style={s.sectionCard}>
               <Text style={s.sectionEyebrow}>Type</Text>
@@ -207,7 +224,7 @@ const SendFeedbackScreen: React.FC = () => {
             </Card>
           </Animated.View>
 
-          {/* ── Rating ────────────────────────────────────────── */}
+          ── Rating ──────────────────────────────────────────
           <Animated.View
             entering={FadeInDown.delay(100).springify().damping(18).stiffness(220)}
           >
@@ -244,7 +261,7 @@ const SendFeedbackScreen: React.FC = () => {
             </Card>
           </Animated.View>
 
-          {/* ── Topics ────────────────────────────────────────── */}
+          ── Topics ──────────────────────────────────────────
           <Animated.View
             entering={FadeInDown.delay(180).springify().damping(18).stiffness(220)}
           >
@@ -272,6 +289,7 @@ const SendFeedbackScreen: React.FC = () => {
               </View>
             </Card>
           </Animated.View>
+          */}
 
           {/* ── Message ───────────────────────────────────────── */}
           <Animated.View
@@ -297,9 +315,12 @@ const SendFeedbackScreen: React.FC = () => {
               </View>
               <View style={s.charCountRow}>
                 <Text style={s.charCount}>{feedbackText.length}/1000</Text>
-                {feedbackText.trim().length > 0 && feedbackText.trim().length < 10 && (
-                  <Text style={s.charHint}>Minimum 10 characters</Text>
-                )}
+                {feedbackText.trim().length > 0 &&
+                  feedbackText.trim().length < MIN_FEEDBACK_LENGTH && (
+                    <Text style={s.charHint}>
+                      Minimum {MIN_FEEDBACK_LENGTH} characters
+                    </Text>
+                  )}
               </View>
             </Card>
           </Animated.View>
@@ -318,12 +339,17 @@ const SendFeedbackScreen: React.FC = () => {
               ]}
               accessibilityRole="button"
               accessibilityLabel="Submit feedback"
+              accessibilityState={{ disabled: !canSubmit, busy: submitting }}
             >
-              <Icon name="send" size={20} color={canSubmit ? colors.surface : colors.textMuted} />
+              {submitting ? (
+                <ActivityIndicator size="small" color={colors.textMuted} />
+              ) : (
+                <Icon name="send" size={20} color={canSubmit ? colors.surface : colors.textMuted} />
+              )}
               <Text
                 style={[s.submitBtnText, !canSubmit && s.submitBtnTextDisabled]}
               >
-                Submit Feedback
+                {submitting ? 'Sending…' : 'Submit Feedback'}
               </Text>
             </Pressable>
           </Animated.View>

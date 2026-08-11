@@ -235,13 +235,20 @@ const ProfileScreen: React.FC = () => {
 
   const navigation = useNavigation<any>();
 
-  const handleSettingPress = useCallback((id: SettingId) => {
-    if (id === 'language') {
-      setLangPickerVisible(true);
-      return;
-    }
-    Alert.alert('opened ', id);
-  }, []);
+  const handleSettingPress = useCallback(
+    (id: SettingId) => {
+      if (id === 'language') {
+        setLangPickerVisible(true);
+        return;
+      }
+      if (id === 'feedback') {
+        navigation.navigate('SendFeedback');
+        return;
+      }
+      Alert.alert('opened ', id);
+    },
+    [navigation]
+  );
 
   // Handles both add (new child prepended) and edit (existing child replaced).
   const onChildSubmitted = useCallback((child: Child) => {

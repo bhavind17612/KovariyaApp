@@ -133,6 +133,11 @@ export const ENDPOINTS = {
     PARENT: '/api/v1/tutorials/parent',
   },
 
+  FEEDBACK: {
+    /** POST — free-text feedback from a parent */
+    PARENT: '/api/v1/feedback/parent',
+  },
+
   BEHAVIOUR: {
     /** GET — returns aspects with their ratings and reason chips */
     ASPECTS: '/api/v1/behaviour/aspects',

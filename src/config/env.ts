@@ -5,8 +5,8 @@ declare const __DEV__: boolean;
 const FALLBACK =
   __DEV__
     ? (Platform.OS === 'android'
-        ? 'http://10.0.2.2:5000'
-        : 'http://localhost:5000')
+        ? 'http://51.20.172.75'
+        : 'http://51.20.172.75')
     : '';
 
 /**
