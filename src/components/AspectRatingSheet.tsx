@@ -550,7 +550,7 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
                 */}
                 <KeyboardAvoidingView
                   behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                  keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 100}
+                  keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 50}
                 >
                 <ScrollView
                   ref={scrollRef}
