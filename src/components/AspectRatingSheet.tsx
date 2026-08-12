@@ -9,11 +9,14 @@ import {
   TextInput,
   Platform,
   Keyboard,
-  KeyboardAvoidingView,
   useWindowDimensions,
   Animated,
   ActivityIndicator,
 } from 'react-native';
+// Not RN's KeyboardAvoidingView: the app mounts KeyboardProvider at the root, and
+// the two drive the same layout from different listeners, which made this sheet's
+// footer oscillate. This one shares KeyboardProvider's native keyboard frames.
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from './Button';
@@ -37,7 +40,7 @@ import { ToastPortalHost } from '../context/ToastPortal';
 import { translationService } from '../services/translationService';
 import { behaviourService } from '../services/behaviourService';
 import type { AspectReasonChip } from '../types/behaviour';
-import type { RatingSheetTranslationsApiData } from '../types/translation';
+import type { RatingSheetTranslationsApiData, ScaleLabelEntry } from '../types/translation';
 
 const NEXT_STEP_TOOLTIP_MS = 4000;
 const NEXT_STEP_POPOVER_ESTIMATE_H = 48;
@@ -540,29 +543,33 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
               /* ── Normal form ──────────────────────────────────────────── */
               <>
                 <Text style={styles.sheetHint}>{uiStrings.sheetHint}</Text>
+                {/*
+                  The scroll area AND the save footer both live inside the
+                  KeyboardAvoidingView, so the note field and the Save / Save & Next
+                  buttons all stay above the keyboard while typing.
+                */}
                 <KeyboardAvoidingView
                   behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                   keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 100}
                 >
-                  <ScrollView
-                    ref={scrollRef}
-                    style={[styles.scroll, { maxHeight: windowHeight - insets.top - 270 }]}
-                    keyboardShouldPersistTaps="handled"
-                    keyboardDismissMode="interactive"
-                    showsVerticalScrollIndicator={false}
-                    nestedScrollEnabled
-                  >
+                <ScrollView
+                  ref={scrollRef}
+                  style={[styles.scroll, { maxHeight: windowHeight - insets.top - 270 }]}
+                  keyboardShouldPersistTaps="handled"
+                  keyboardDismissMode="interactive"
+                  showsVerticalScrollIndicator={false}
+                  nestedScrollEnabled
+                >
                     <Text style={styles.blockLabel}>{uiStrings.sectionRating}</Text>
                     <Text style={styles.ratingHint}>{uiStrings.ratingHint}</Text>
                     <View style={styles.scaleGrid}>
                       {(() => {
                         // Build scale options from API data; fall back to static list when unavailable.
-                        const scaleItems = apiTranslations?.scale_labels
+                        const scaleItems: ScaleLabelEntry[] = apiTranslations?.scale_labels
                           ? Object.values(apiTranslations.scale_labels)
-                            .filter((raw): raw is import('../types/translation').ScaleLabelEntry =>
+                            .filter((raw): raw is ScaleLabelEntry =>
                               typeof raw === 'object' && raw !== null && 'score' in raw
                             )
-                            .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
                           : RATING_SCALE_OPTIONS.map((o) => ({
                             id: o.value,
                             score: o.value,
@@ -570,7 +577,34 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
                             sort_order: 0,
                           }));
 
-                        return scaleItems.map((opt) => {
+                        // The grid wraps at two columns, so array order fills
+                        // left, right, left, right… Pairing one negative with one
+                        // positive therefore puts every negative in the left
+                        // column and every positive in the right, hardest score
+                        // first: -4 | +4 / -2 | +2 / -1 | +1.
+                        //
+                        // The API's `sort_order` is deliberately not used for
+                        // layout — the app owns this arrangement so it stays
+                        // correct whatever order the backend sends.
+                        const negatives = scaleItems
+                          .filter((o) => o.score < 0)
+                          .sort((a, b) => a.score - b.score); // -4, -2, -1
+                        const positives = scaleItems
+                          .filter((o) => o.score >= 0)
+                          .sort((a, b) => b.score - a.score); // +4, +2, +1
+
+                        const orderedItems: ScaleLabelEntry[] = [];
+                        for (let i = 0; i < Math.max(negatives.length, positives.length); i++) {
+                          // Guarded so an uneven split can't leave a hole in the grid.
+                          if (negatives[i]) {
+                            orderedItems.push(negatives[i]);
+                          }
+                          if (positives[i]) {
+                            orderedItems.push(positives[i]);
+                          }
+                        }
+
+                        return orderedItems.map((opt) => {
                           const neg = opt.score < 0;
                           const selected = scale === opt.id;
                           const ripple = neg
@@ -737,8 +771,7 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
                         <Icon name="chevron-right" size={22} color={colors.textMuted} />
                       </Pressable>
                     )}
-                  </ScrollView>
-                </KeyboardAvoidingView>
+                </ScrollView>
                 <View style={styles.saveFooter}>
                   {showBtnGuide && showSaveAndNext && (
                     <Animated.View
@@ -795,6 +828,7 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
                     />
                   )}
                 </View>
+                </KeyboardAvoidingView>
               </>
             ) : null}
           </View>
@@ -827,6 +861,9 @@ const styles = StyleSheet.create({
     // justifyContent: 'flex-end',
     // bottom: 100,
     backgroundColor: 'green'
+  },
+  kav: {
+    width: '100%',
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
