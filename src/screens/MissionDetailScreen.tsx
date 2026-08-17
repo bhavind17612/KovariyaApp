@@ -92,7 +92,20 @@ export default function MissionDetailScreen({ route }: Props) {
   const canUploadProof = mission.allowUploadProof === true;
 
   const rewardBadge = mission.rewardBadge;
-  const rewardBadgeImage = rewardBadge ? BADGE_REWARD_IMAGES[rewardBadge.key] : undefined;
+  /**
+   * Prefer the artwork the API points at. The bundled map is only a fallback for
+   * legacy `respect` / `responsibility` keys — the backend now sends codes like
+   * `BADGE_3`, which used to miss the map entirely and render no badge at all.
+   */
+  const rewardBadgeImage = useMemo(() => {
+    if (!rewardBadge) {
+      return undefined;
+    }
+    if (rewardBadge.image) {
+      return { uri: rewardBadge.image };
+    }
+    return BADGE_REWARD_IMAGES[rewardBadge.key as keyof typeof BADGE_REWARD_IMAGES];
+  }, [rewardBadge]);
 
   const doneCount = useMemo(
     () => mission.completionHistory.filter((entry) => entry.status === 'done').length,
@@ -280,7 +293,10 @@ export default function MissionDetailScreen({ route }: Props) {
                 ) : null}
 
                 <Text style={styles.rewardPanelTitle}>{rewardBadge.name} Badge</Text>
-                <Text style={styles.rewardPanelDesc}>{rewardBadge.description}</Text>
+                {/* The API sends `description: null` for badges with no copy yet. */}
+                {rewardBadge.description ? (
+                  <Text style={styles.rewardPanelDesc}>{rewardBadge.description}</Text>
+                ) : null}
 
                 <View
                   style={[

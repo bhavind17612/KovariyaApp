@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Image,
   Linking,
   Platform,
   Pressable,
@@ -49,6 +50,53 @@ function TutorialCardSkeleton() {
   );
 }
 
+/* ─── Poster ─── */
+
+/**
+ * Banner shown on the card in place of the video.
+ *
+ * Playback happens in an external player (Linking.openURL), so nothing ever
+ * renders over this — the poster stands in for the video for the card's whole
+ * life. Falls back to the original decorative placeholder when the tutorial has
+ * no `thumbnail_url` or the image fails to load.
+ */
+function TutorialThumbnail({ uri }: { uri: string | null }) {
+  const [failed, setFailed] = useState(false);
+  const showImage = Boolean(uri) && !failed;
+
+  return (
+    <View style={[styles.thumbnailShell, !showImage && styles.thumbnailShellPlaceholder]}>
+      {showImage ? (
+        <>
+          <Image
+            source={{ uri: uri as string }}
+            style={StyleSheet.absoluteFill}
+            resizeMode="cover"
+            onError={() => setFailed(true)}
+            accessible={false}
+            accessibilityIgnoresInvertColors
+          />
+          {/* Keeps the play button readable over bright artwork. */}
+          <View pointerEvents="none" style={styles.thumbnailScrim} />
+        </>
+      ) : (
+        <>
+          <View style={[styles.thumbnailOrbLarge, { backgroundColor: `${colors.primary}22` }]} />
+          <View style={[styles.thumbnailOrbSmall, { backgroundColor: `${colors.primary}18` }]} />
+        </>
+      )}
+
+      <View style={styles.playButtonWrap}>
+        <View style={styles.playButton}>
+          <View style={styles.playButtonIcon}>
+            <Icon name="play-arrow" size={24} color={colors.surface} />
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 const TutorialsScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
@@ -90,7 +138,7 @@ const TutorialsScreen: React.FC = () => {
       })
       .catch((err) => {
         setError(true);
-        showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 4000 });
+        showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 3000 });
       });
   }, [showToast]);
 
@@ -193,36 +241,7 @@ const TutorialsScreen: React.FC = () => {
                   accessibilityRole="button"
                   accessibilityLabel={`Play ${video.title} on YouTube`}
                 >
-                  <View style={[styles.thumbnailShell, { backgroundColor: colors.lavenderSoft }]}>
-                    <View
-                      style={[
-                        styles.thumbnailOrbLarge,
-                        { backgroundColor: `${colors.primary}22` },
-                      ]}
-                    />
-                    <View
-                      style={[
-                        styles.thumbnailOrbSmall,
-                        { backgroundColor: `${colors.primary}18` },
-                      ]}
-                    />
-                    <View style={[styles.thumbnailIconOrb, { backgroundColor: colors.primary }]}>
-                      <Icon name={video.icon} size={24} color={colors.surface} />
-                    </View>
-                    <View style={styles.thumbnailMetaChip}>
-                      <Icon name="smart-display" size={13} color={colors.primary} />
-                      <Text style={[styles.thumbnailMetaText, { color: colors.primary }]}>
-                        {video.duration}
-                      </Text>
-                    </View>
-                    <View style={styles.playButtonWrap}>
-                      <View style={styles.playButton}>
-                        <View style={styles.playButtonIcon}>
-                          <Icon name="play-arrow" size={24} color={colors.surface} />
-                        </View>
-                      </View>
-                    </View>
-                  </View>
+                  <TutorialThumbnail uri={video.thumbnailUrl} />
                 </Pressable>
 
                 <View style={styles.videoInfo}>
@@ -379,6 +398,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
+    // Neutral base so a loading poster doesn't flash the placeholder tint.
+    backgroundColor: colors.surfaceMuted,
+  },
+  thumbnailShellPlaceholder: {
+    backgroundColor: colors.lavenderSoft,
+  },
+  thumbnailScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(13, 13, 13, 0.28)',
   },
   thumbnailOrbLarge: {
     position: 'absolute',

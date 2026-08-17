@@ -15,12 +15,26 @@ export type MentorMissionHistoryEntry = {
 export type MentorMissionTimelineEntry = {
   label: string;
   datetime: string;
+  /**
+   * Where the row came from. Rows marked `completion` mirror a daily log and are
+   * folded back into `completionHistory` by the missions service.
+   */
+  source?: string;
+  /** ISO calendar date YYYY-MM-DD. Present on completion rows. */
+  date?: string;
+  status?: 'done' | 'missed';
+  note?: string | null;
+  proofUrl?: string | null;
 };
 
 export type MentorMissionBadgeReward = {
-  key: 'respect' | 'responsibility';
+  /** Backend badge code (e.g. `BADGE_3`) — not a fixed set. */
+  key: string;
   name: string;
-  description: string;
+  /** The API may have no copy written for a badge yet. */
+  description: string | null;
+  /** Remote artwork URL. Falls back to bundled art when absent. */
+  image?: string | null;
 };
 
 export type MentorMission = {

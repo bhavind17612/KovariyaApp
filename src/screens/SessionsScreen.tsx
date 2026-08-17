@@ -601,7 +601,7 @@ const SessionsScreen: React.FC = () => {
       const message = getDisplayMessage(error);
       setSessionItems([]);
       setSessionsError(message);
-      showToast({ message, type: 'error', durationMs: 4000 });
+      showToast({ message, type: 'error', durationMs: 3000 });
     } finally {
       setIsLoadingSessions(false);
     }

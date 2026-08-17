@@ -37,7 +37,14 @@ type ToastContextValue = {
 
 const ToastContext = createContext<ToastContextValue | undefined>(undefined);
 
-const DEFAULT_DURATION = 4500;
+const DEFAULT_DURATION = 3000;
+
+/**
+ * Hard ceiling for how long a toast stays on screen. Applied to every call, so a
+ * caller passing a longer `durationMs` is clamped rather than trusted — the 3s
+ * rule holds even for call sites added later.
+ */
+const MAX_DURATION = 3000;
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const insets = useSafeAreaInsets();
@@ -83,7 +90,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       hideTimer.current = setTimeout(() => {
         hideToast();
         hideTimer.current = null;
-      }, durationMs);
+      }, Math.min(durationMs, MAX_DURATION));
     },
     [clearHideTimer, hideToast]
   );

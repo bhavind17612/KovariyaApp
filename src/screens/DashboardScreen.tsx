@@ -345,7 +345,7 @@ const DashboardScreen: React.FC = () => {
       setTodayMissionDate(today?.date ?? '');
     } catch (err) {
       setTodayMission(null);
-      showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 4000 });
+      showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 3000 });
     } finally {
       setMissionLoading(false);
     }
@@ -367,7 +367,7 @@ const DashboardScreen: React.FC = () => {
       setBsiSnapshot(await analyticsService.getBsi(studentUuid));
     } catch (err) {
       setBsiSnapshot(null);
-      showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 4000 });
+      showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 3000 });
     } finally {
       setBsiLoading(false);
     }
@@ -401,7 +401,7 @@ const DashboardScreen: React.FC = () => {
         });
       } catch (err) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 4000 });
+        showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 3000 });
       } finally {
         setMissionLogging(false);
       }
@@ -590,7 +590,7 @@ const DashboardScreen: React.FC = () => {
             fetchAspects();
           })
           .catch((err) => {
-            showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 4000 });
+            showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 3000 });
           });
       }
     },
@@ -626,7 +626,7 @@ const DashboardScreen: React.FC = () => {
             fetchAspects();
           })
           .catch((err) => {
-            showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 4000 });
+            showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 3000 });
           });
       }
     },
@@ -638,7 +638,7 @@ const DashboardScreen: React.FC = () => {
     showToast({
       type: 'info',
       message: 'Voice notes will be available in a future update.',
-      durationMs: 3500,
+      durationMs: 3000,
     });
   }, [showToast]);
 

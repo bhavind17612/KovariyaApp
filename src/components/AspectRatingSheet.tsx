@@ -42,6 +42,12 @@ import { behaviourService } from '../services/behaviourService';
 import type { AspectReasonChip } from '../types/behaviour';
 import type { RatingSheetTranslationsApiData, ScaleLabelEntry } from '../types/translation';
 
+/**
+ * Save confirmations fire on every logged aspect — often several in a row — so
+ * they clear faster than a normal toast to stay out of the parent's way.
+ */
+const SAVE_TOAST_MS = 1800;
+
 const NEXT_STEP_TOOLTIP_MS = 4000;
 const NEXT_STEP_POPOVER_ESTIMATE_H = 48;
 const NEXT_STEP_POPOVER_GAP = 8;
@@ -122,7 +128,7 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
       showToast({
         type: 'error',
         message: "Couldn't load the rating sheet. Please check your internet connection and try again.",
-        durationMs: 5000,
+        durationMs: 3000,
       });
     }
   }, [visible, translationFetchError, showToast]);
@@ -253,7 +259,7 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
           showToast({
             type: 'error',
             message: uiStrings.toastMaxReasons,
-            durationMs: 3200,
+            durationMs: 2500,
           });
           return prevByAspect;
         }
@@ -316,6 +322,7 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
       message: childName
         ? `Saved · today's behaviour log for ${childName}. You can add another log with Save entry.`
         : "Saved · today's behaviour log. You can add another log with Save entry.",
+      durationMs: SAVE_TOAST_MS,
     });
     onSave(payload);
     if (isFinalAspect) {
@@ -337,6 +344,7 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
       message: childName
         ? `Saved · ${aspect?.name ?? 'aspect'} for ${childName}`
         : `Saved · ${aspect?.name ?? 'aspect'}`,
+      durationMs: SAVE_TOAST_MS,
     });
     scrollRef.current?.scrollTo({ y: 0, animated: true });
     onSaveAndNext(payload);

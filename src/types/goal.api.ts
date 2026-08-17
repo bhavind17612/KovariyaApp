@@ -69,6 +69,7 @@ export function mapApiGoalToGoal(api: ApiGoal): Goal {
     rewardName: api.reward_name ?? '',
     rewardValue: api.reward_value ?? undefined, // null → undefined (optional field)
     status: toGoalStatus(api.status),
+    aspectId: typeof api.aspect_id === 'number' ? api.aspect_id : undefined,
     createdAt: api.created_at ?? undefined,
   };
 }

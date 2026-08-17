@@ -298,46 +298,6 @@ export default function MissionsScreen({ navigation }: Props) {
 									</View>
 								</View>
 							</Pressable>
-
-							{canMarkDaily && !isDailyDone ? (
-								<View style={styles.actionsRow}>
-									<View style={styles.actionButtonCol}>
-										<Button
-											title="Done"
-											size="small"
-											variant="primary"
-											icon={<Icon name="check-circle" size={18} color={colors.surface} />}
-											onPress={() => markDone(mission)}
-											btnStyle={StyleSheet.flatten([
-												styles.missionButtonDone,
-												{
-													backgroundColor: colors.growth,
-													minHeight: 38,
-													paddingVertical: 8,
-												},
-											])}
-										/>
-									</View>
-									<View style={styles.actionButtonCol}>
-										<Button
-											title="Missed"
-											size="small"
-											variant="primary"
-											icon={<Icon name="highlight-off" size={18} color={colors.surface} />}
-											onPress={() => markMissed(mission)}
-											btnStyle={StyleSheet.flatten([
-												styles.missionButtonMissed,
-												{
-													backgroundColor: colors.error,
-													minHeight: 38,
-													paddingVertical: 8,
-												},
-											])}
-										/>
-									</View>
-								</View>
-							) : null}
-
 						</Animated.View>
 					);
 				})}

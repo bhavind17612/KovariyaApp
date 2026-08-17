@@ -1,6 +1,10 @@
 import { api } from '../api';
 import { ENDPOINTS } from '../api/endpoints';
-import type { MentorMission } from '../data/mentorMissions';
+import type {
+  MentorMission,
+  MentorMissionHistoryEntry,
+  MentorMissionTimelineEntry,
+} from '../data/mentorMissions';
 import type { LogMissionInput, TodayMissionData } from '../types/mission.api';
 
 const IMAGE_MIME_BY_EXT: Record<string, string> = {
@@ -12,16 +16,43 @@ const IMAGE_MIME_BY_EXT: Record<string, string> = {
 };
 
 /**
- * Ensures array fields the UI relies on are never undefined.
+ * Rebuilds the daily log from the timeline.
+ *
+ * The API doesn't send `completionHistory`; it folds the same rows into
+ * `timeline` tagged `source: 'completion'`, carrying the `date`, `status` and
+ * `note` that MentorMissionHistoryEntry needs. Defaulting to `[]` instead of
+ * converting is what left the Check-ins card and Daily log empty.
+ */
+function completionHistoryFromTimeline(
+  timeline: MentorMissionTimelineEntry[]
+): MentorMissionHistoryEntry[] {
+  return timeline
+    .filter((row) => row.source === 'completion' && typeof row.date === 'string')
+    .map((row) => ({
+      date: row.date as string,
+      // Anything the backend doesn't explicitly mark done counts as missed.
+      status: row.status === 'done' ? ('done' as const) : ('missed' as const),
+      note: row.note ?? undefined,
+    }));
+}
+
+/**
+ * Ensures fields the UI relies on are never undefined.
  * The API may omit `completionHistory` (it sends `timeline` instead),
  * which would crash callers like getDailyStatusForToday().
  */
 function normalizeMission(m: MentorMission): MentorMission {
+  const timeline = Array.isArray(m.timeline) ? m.timeline : [];
+  const history = Array.isArray(m.completionHistory) ? m.completionHistory : [];
   return {
     ...m,
+    // The API does not send progressPercent yet. Keeping it numeric stops the
+    // detail screen rendering "undefined%" and stops `undefined >= 100` from
+    // silently reporting every mission as incomplete.
+    progressPercent: typeof m.progressPercent === 'number' ? m.progressPercent : 0,
     rewardBadge: m.rewardBadge ?? null,
-    timeline: Array.isArray(m.timeline) ? m.timeline : [],
-    completionHistory: Array.isArray(m.completionHistory) ? m.completionHistory : [],
+    timeline,
+    completionHistory: history.length > 0 ? history : completionHistoryFromTimeline(timeline),
     allowUploadProof: m.allowUploadProof ?? false,
   };
 }

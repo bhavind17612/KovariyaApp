@@ -102,7 +102,7 @@ const SendFeedbackScreen: React.FC = () => {
       await feedbackService.sendParentFeedback(message);
       setSubmitted(true);
     } catch (err) {
-      showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 4000 });
+      showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 3000 });
     } finally {
       setSubmitting(false);
     }

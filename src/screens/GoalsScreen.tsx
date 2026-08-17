@@ -28,8 +28,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { setStatusBarStyle } from 'expo-status-bar';
 import { useFocusEffect } from '@react-navigation/native';
-import { AppGradientHeader, AppRefreshControl, Button, Card, InputField, GoalsListSkeleton } from '../components';
+import { AppGradientHeader, AppRefreshControl, AspectPickerSheet, Button, Card, InputField, GoalsListSkeleton } from '../components';
 import { DatePickerField } from '../components/DatePickerField';
+import { behaviourService } from '../services/behaviourService';
+import type { ApiAspect } from '../types/behaviour';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { toIsoDate } from '../utils/age';
 import { useToast } from '../context/ToastContext';
@@ -54,13 +56,6 @@ import {
 	shadows,
 } from '../theme';
 import { floatingPillShadow, goalStatusFloatingPalette } from '../theme/missionPillStyles';
-
-/**
- * The create-goal form does not capture a behaviour aspect yet.
- * TODO: replace with an aspect picker (GET BEHAVIOUR.ASPECTS) so each goal
- * can target the intended aspect instead of this default.
- */
-const DEFAULT_GOAL_ASPECT_ID = 1;
 
 /* ─── helper fns ─── */
 
@@ -311,6 +306,38 @@ const GoalsScreen: React.FC = () => {
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const scheduleMaxDate = useMemo(() => createGoalScheduleMaxDate(), []);
 
+	// ── Behaviour aspect (goals are aspect-scoped) ───────────────────────────
+	const [aspects, setAspects] = useState<ApiAspect[]>([]);
+	const [aspectsLoading, setAspectsLoading] = useState(false);
+	const [formAspect, setFormAspect] = useState<ApiAspect | null>(null);
+	const [aspectPickerOpen, setAspectPickerOpen] = useState(false);
+
+	// Same endpoint the dashboard rating tiles use. Passing the selected child
+	// keeps the localised names and per-child progress consistent with it.
+	const loadAspects = useCallback(() => {
+		setAspectsLoading(true);
+		behaviourService
+			.getAspects(undefined, selectedChildId ?? undefined)
+			.then(({ apiAspects }) => setAspects(apiAspects))
+			.catch(() => setAspects([]))
+			.finally(() => setAspectsLoading(false));
+	}, [selectedChildId]);
+
+	// Loaded up-front (not just when the create modal opens) because the goal
+	// cards resolve their aspect name/icon/colour from this list.
+	useEffect(() => {
+		loadAspects();
+	}, [loadAspects]);
+
+	/** Numeric behaviour_aspects.id → aspect, for the goal cards. */
+	const aspectById = useMemo(() => {
+		const map = new Map<number, ApiAspect>();
+		for (const aspect of aspects) {
+			map.set(aspect.aspectId, aspect);
+		}
+		return map;
+	}, [aspects]);
+
 	const bottomPad = useMemo(
 		() => getFloatingTabBarBottomPadding(insets.bottom),
 		[insets.bottom]
@@ -351,14 +378,20 @@ const GoalsScreen: React.FC = () => {
 		future.setDate(future.getDate() + 30);
 		setFormEnd(toIsoDate(future));
 		setFormTargetRaw('');
+		setFormAspect(null);
 		setFormError(null);
 	}, []);
 
 	const openModal = useCallback(() => {
 		Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 		resetForm();
+		// Already fetched on mount; re-request only if that attempt came back empty,
+		// so opening the sheet doubles as a retry rather than a duplicate call.
+		if (aspects.length === 0) {
+			loadAspects();
+		}
 		setModalOpen(true);
-	}, [resetForm]);
+	}, [resetForm, loadAspects, aspects.length]);
 
 	const closeModal = useCallback(() => {
 		setModalOpen(false);
@@ -374,6 +407,13 @@ const GoalsScreen: React.FC = () => {
 
 		if (!title || !rewardName || !start || !end || !targetStr) {
 			setFormError('Please fill in all required fields.');
+			Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+			return;
+		}
+
+		// Goals are aspect-scoped; the API rejects a create without a valid aspect_id.
+		if (!formAspect) {
+			setFormError('Select the behaviour aspect this goal targets.');
 			Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
 			return;
 		}
@@ -411,7 +451,9 @@ const GoalsScreen: React.FC = () => {
 
 		const payload: CreateGoalPayload = {
 			student_uuid: selectedChildId,
-			aspect_id: DEFAULT_GOAL_ASPECT_ID,
+			// The numeric behaviour_aspects.id — NOT the slug in `aspect.id`.
+			// The API validates this with z.number().int().positive().
+			aspect_id: formAspect.aspectId,
 			goal_name: title,
 			goal_description: null,
 			reward_name: rewardName,
@@ -444,6 +486,7 @@ const GoalsScreen: React.FC = () => {
 		formStart,
 		formEnd,
 		formTargetRaw,
+		formAspect,
 		selectedChildId,
 		loadGoals,
 		showToast,
@@ -504,6 +547,10 @@ const GoalsScreen: React.FC = () => {
 					const statusPal = goalStatusFloatingPalette(goal.status);
 					const isCompleted = goal.status === 'completed';
 					const barColor = progressBarColor(pct, goal.status);
+					// Undefined while aspects are still loading, or if the goal points at
+					// an aspect no longer in the list — the chip is simply omitted then.
+					const goalAspect =
+						goal.aspectId != null ? aspectById.get(goal.aspectId) : undefined;
 					return (
 						<Animated.View
 							key={goal.id}
@@ -523,7 +570,10 @@ const GoalsScreen: React.FC = () => {
 								<Pressable
 									style={({ pressed }) => [pressed && styles.cardPressed]}
 									accessibilityRole="button"
-									accessibilityLabel={`${goal.title}. ${formatGoalStatusLabel(goal.status)}.`}
+									accessibilityLabel={
+											`${goal.title}. ${formatGoalStatusLabel(goal.status)}.` +
+											(goalAspect ? ` Aspect: ${goalAspect.name}.` : '')
+										}
 								>
 									{/* Card header row */}
 									<View style={styles.cardHeader}>
@@ -558,6 +608,31 @@ const GoalsScreen: React.FC = () => {
 											</Text>
 										</View>
 									</View>
+
+									{/* Aspect this goal targets */}
+									{goalAspect ? (
+										<View
+											style={[
+												styles.aspectChip,
+												{
+													backgroundColor: `${goalAspect.color}14`,
+													borderColor: `${goalAspect.color}40`,
+												},
+											]}
+										>
+											<Icon
+												name={goalAspect.iconName || 'category'}
+												size={13}
+												color={goalAspect.color || colors.primary}
+											/>
+											<Text
+												style={[styles.aspectChipText, { color: goalAspect.color || colors.primary }]}
+												numberOfLines={1}
+											>
+												{goalAspect.name}
+											</Text>
+										</View>
+									) : null}
 
 									{/* Description */}
 									{goal.description ? (
@@ -681,6 +756,59 @@ const GoalsScreen: React.FC = () => {
 							keyboardShouldPersistTaps="handled"
 							showsVerticalScrollIndicator={false}
 						>
+							{/* ── Section: Aspect ── */}
+							<View style={styles.formSection}>
+								<View style={styles.formSectionHeader}>
+									<View style={[styles.formSectionIconOrb, { backgroundColor: colors.lavenderSoft }]}>
+										<Icon name="category" size={16} color={colors.primary} />
+									</View>
+									<Text style={styles.formSectionTitle}>Aspect</Text>
+								</View>
+								<View style={styles.formSectionBody}>
+									<Pressable
+										onPress={() => setAspectPickerOpen(true)}
+										style={({ pressed }) => [
+											styles.aspectField,
+											!formAspect && styles.aspectFieldEmpty,
+											pressed && styles.aspectFieldPressed,
+										]}
+										accessibilityRole="button"
+										accessibilityLabel={
+											formAspect
+												? `Behaviour aspect: ${formAspect.name}. Tap to change.`
+												: 'Select behaviour aspect'
+										}
+									>
+										<View
+											style={[
+												styles.aspectFieldOrb,
+												{
+													backgroundColor: formAspect
+														? `${formAspect.color}1F`
+														: colors.surfaceMuted,
+												},
+											]}
+										>
+											<Icon
+												name={formAspect?.iconName || 'category'}
+												size={18}
+												color={formAspect?.color || colors.textMuted}
+											/>
+										</View>
+										<Text
+											style={[
+												styles.aspectFieldText,
+												!formAspect && styles.aspectFieldPlaceholder,
+											]}
+											numberOfLines={1}
+										>
+											{formAspect ? formAspect.name : 'Select an aspect'}
+										</Text>
+										<Icon name="expand-more" size={22} color={colors.textMuted} />
+									</Pressable>
+								</View>
+							</View>
+
 							{/* ── Section: Goal details ── */}
 							<View style={styles.formSection}>
 								<View style={styles.formSectionHeader}>
@@ -806,6 +934,22 @@ const GoalsScreen: React.FC = () => {
 								icon={!isSubmitting ? <Icon name="check" size={20} color={colors.surface} /> : undefined}
 							/>
 						</ScrollView>
+
+						{/*
+							Rendered inside the create-goal Modal: that Modal is a native
+							pageSheet, so a sheet mounted outside it would be drawn behind.
+						*/}
+						<AspectPickerSheet
+							visible={aspectPickerOpen}
+							selected={formAspect?.id ?? null}
+							aspects={aspects}
+							loading={aspectsLoading}
+							onSelect={(aspect) => {
+								setFormAspect(aspect);
+								setFormError(null);
+							}}
+							onClose={() => setAspectPickerOpen(false)}
+						/>
 					</SafeAreaView>
 				</KeyboardAvoidingView>
 			</Modal>
@@ -1007,6 +1151,27 @@ const styles = StyleSheet.create({
 		color: colors.textSecondary,
 		marginTop: spacing.sm,
 		lineHeight: 20,
+	},
+
+	/* ─── Aspect chip ─── */
+	aspectChip: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		alignSelf: 'flex-start',
+		gap: 5,
+		maxWidth: '100%',
+		marginTop: spacing.sm,
+		paddingVertical: 4,
+		paddingHorizontal: spacing.sm,
+		borderRadius: borderRadius.full,
+		borderWidth: StyleSheet.hairlineWidth,
+	},
+	aspectChipText: {
+		fontFamily: typography.fontFamily.primary,
+		fontSize: typography.fontSize.xs,
+		fontWeight: '800',
+		letterSpacing: 0.2,
+		flexShrink: 1,
 	},
 
 	/* ─── Reward strip ─── */
@@ -1268,6 +1433,42 @@ const styles = StyleSheet.create({
 		paddingHorizontal: spacing.md,
 		paddingBottom: spacing.md,
 		paddingTop: spacing.xs,
+	},
+	/* Aspect picker trigger — styled to sit alongside InputField/DatePickerField */
+	aspectField: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: spacing.sm,
+		paddingVertical: spacing.sm,
+		paddingHorizontal: spacing.sm,
+		borderRadius: borderRadius.large,
+		borderWidth: 1,
+		borderColor: colors.borderStrong,
+		backgroundColor: colors.surfaceMuted,
+	},
+	aspectFieldEmpty: {
+		borderStyle: 'dashed',
+	},
+	aspectFieldPressed: {
+		opacity: 0.88,
+	},
+	aspectFieldOrb: {
+		width: 34,
+		height: 34,
+		borderRadius: 17,
+		alignItems: 'center',
+		justifyContent: 'center',
+	},
+	aspectFieldText: {
+		...textStyles.bodyMedium,
+		flex: 1,
+		minWidth: 0,
+		color: colors.ink,
+		fontWeight: '700',
+	},
+	aspectFieldPlaceholder: {
+		color: colors.textMuted,
+		fontWeight: '600',
 	},
 	dateFieldsRow: {
 		flexDirection: 'row',

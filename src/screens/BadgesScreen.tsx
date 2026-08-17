@@ -240,7 +240,7 @@ const BadgesScreen: React.FC = () => {
       })
       .catch((err) => {
         setError(true);
-        showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 4000 });
+        showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 3000 });
       });
   }, [selectedChildId, showToast]);
 

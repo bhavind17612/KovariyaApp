@@ -65,11 +65,25 @@ export interface CreateStudentPayload {
   is_active?: boolean;
 }
 
+/**
+ * Pulls the student row out of an API payload.
+ *
+ * The list endpoint returns the row directly under `data`, while the detail and
+ * create/update endpoints nest it under `data.student`. Accepting both here means
+ * a caller can never hand `toChild` an object that is really an envelope — which
+ * silently produced a Child with `name: undefined` and crashed the profile list.
+ */
+function unwrapStudentRow(data: unknown): StudentApiRow {
+  const payload = data as ({ student?: StudentApiRow } & StudentApiRow) | null | undefined;
+  return (payload?.student ?? payload ?? {}) as StudentApiRow;
+}
+
 /** Maps a backend StudentApiRow to the app's Child type. */
 function toChild(row: StudentApiRow): Child {
   return {
     id: row.uuid,
-    name: row.full_name,
+    // Never undefined: the UI derives avatar initials from this and would throw.
+    name: row.full_name ?? '',
     age: ageFromDob(row.date_of_birth),
     avatar: row.avatar_url ?? undefined,
     dateOfBirth: row.date_of_birth ?? undefined,
@@ -97,7 +111,7 @@ class StudentsService {
   /** Creates a new child for the logged-in parent and returns the created Child. */
   async createStudent(payload: CreateStudentPayload): Promise<Child> {
     const response = await api.post<StudentApiRow>(ENDPOINTS.STUDENTS.LIST, payload);
-    return toChild(response.data.data);
+    return toChild(unwrapStudentRow(response.data.data));
   }
 
   /** Fetches the full detail for a single child by UUID. */
@@ -105,16 +119,13 @@ class StudentsService {
     const response = await api.get<{ student: StudentApiRow } | StudentApiRow>(
       ENDPOINTS.STUDENTS.DETAIL(uuid),
     );
-    // The detail endpoint nests the row under `data.student`; the list does not.
-    const data = response.data.data as { student?: StudentApiRow } & StudentApiRow;
-    const row = data?.student ?? data;
-    return toChild(row);
+    return toChild(unwrapStudentRow(response.data.data));
   }
 
   /** Updates a child's details and returns the refreshed Child. */
   async updateStudent(uuid: string, payload: UpdateStudentPayload): Promise<Child> {
     const response = await api.patch<StudentApiRow>(ENDPOINTS.STUDENTS.UPDATE(uuid), payload);
-    return toChild(response.data.data);
+    return toChild(unwrapStudentRow(response.data.data));
   }
 }
 

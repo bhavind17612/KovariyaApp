@@ -13,6 +13,7 @@ export { WeeklyAspectProgressChart } from './WeeklyAspectProgressChart';
 export { AIInsightsCard } from './AIInsightsCard';
 export { AddChildModal } from './AddChildModal';
 export { LanguagePickerSheet } from './LanguagePickerSheet';
+export { AspectPickerSheet } from './AspectPickerSheet';
 export { FloatingLabelField } from './FloatingLabelField';
 export { SelectField } from './SelectField';
 export type { SelectOption } from './SelectField';

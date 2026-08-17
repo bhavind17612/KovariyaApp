@@ -12,6 +12,7 @@ function mapTutorial(raw: ApiTutorial): Tutorial {
     description: raw.description,
     duration: raw.duration,
     url: raw.url,
+    thumbnailUrl: raw.thumbnail_url || null,
     icon: raw.icon || DEFAULT_ICON,
   };
 }

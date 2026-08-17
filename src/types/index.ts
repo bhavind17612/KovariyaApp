@@ -60,6 +60,12 @@ export interface Goal {
   /** Optional display (e.g. currency or “extra screen time”) */
   rewardValue?: string;
   status: GoalStatus;
+  /**
+   * Numeric behaviour_aspects.id this goal targets. The list endpoint selects
+   * `goals.*` with no join, so the aspect's name/icon/colour must be resolved
+   * against GET /behaviour/aspects on the client.
+   */
+  aspectId?: number;
   /** ISO timestamp the goal was created (used for sorting newest-first) */
   createdAt?: string;
 }

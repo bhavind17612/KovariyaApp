@@ -6,6 +6,13 @@
  */
 export interface ApiAspect {
   id: string;
+  /**
+   * Numeric `behaviour_aspects.id`. The API sends this alongside the slug
+   * (`id: row.slug ?? String(row.id)`, `aspectId: Number(row.id)`), and it is
+   * what endpoints typed as a positive integer expect — POST /api/v1/goals
+   * validates `aspect_id` with `z.number().int().positive()`, which rejects the slug.
+   */
+  aspectId: number;
   name: string;
   iconName: string;
   /** Accent / icon tint colour (hex). Used for `iconTint` in the tile. */

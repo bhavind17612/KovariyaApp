@@ -299,7 +299,7 @@ export function LoginScreen({ navigation }: LoginProps) {
       setPinError(true);
       setPin('');
       const msg = getDisplayMessage(err) || 'Could not verify PIN';
-      showToast({ message: msg, type: 'error', durationMs: 4000 });
+      showToast({ message: msg, type: 'error', durationMs: 3000 });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setTimeout(() => pinInputRef.current?.focus(), 300);
     } finally {
@@ -337,7 +337,7 @@ export function LoginScreen({ navigation }: LoginProps) {
       emailOtpX.value = withTiming(0, { duration: 360, easing: Easing.inOut(Easing.cubic) });
       setTimeout(() => otpInputRef.current?.focus(), 500);
     } catch (err) {
-      showToast({ message: getDisplayMessage(err), type: 'error', durationMs: 4000 });
+      showToast({ message: getDisplayMessage(err), type: 'error', durationMs: 3000 });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setSendingOtp(false);
@@ -363,7 +363,7 @@ export function LoginScreen({ navigation }: LoginProps) {
       // Navigation handled automatically by AppNavigator (isAuthenticated → true)
     } catch (err) {
       setOtp('');
-      showToast({ message: getDisplayMessage(err), type: 'error', durationMs: 4000 });
+      showToast({ message: getDisplayMessage(err), type: 'error', durationMs: 3000 });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setTimeout(() => otpInputRef.current?.focus(), 300);
     } finally {
@@ -384,7 +384,7 @@ export function LoginScreen({ navigation }: LoginProps) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       otpInputRef.current?.focus();
     } catch (err) {
-      showToast({ message: getDisplayMessage(err), type: 'error', durationMs: 4000 });
+      showToast({ message: getDisplayMessage(err), type: 'error', durationMs: 3000 });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setResendingOtp(false);

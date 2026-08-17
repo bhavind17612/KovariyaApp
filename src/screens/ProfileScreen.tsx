@@ -118,16 +118,19 @@ const ICON_ORB_COLORS = [
   colors.surfaceMuted,
 ] as const;
 
-function initialsFromFullName(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
+// Both accept a nullable name: a partial API payload should render the '?'
+// placeholder these already fall back to, not throw and take down the screen.
+function initialsFromFullName(name?: string | null): string {
+  const safe = name ?? '';
+  const parts = safe.trim().split(/\s+/).filter(Boolean);
   if (parts.length >= 2) {
     return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
   }
-  return name.slice(0, 2).toUpperCase() || '?';
+  return safe.slice(0, 2).toUpperCase() || '?';
 }
 
-function firstNameInitial(name: string): string {
-  const first = name.trim().split(/\s+/)[0];
+function firstNameInitial(name?: string | null): string {
+  const first = (name ?? '').trim().split(/\s+/)[0];
   return first ? first.charAt(0).toUpperCase() : '?';
 }
 
