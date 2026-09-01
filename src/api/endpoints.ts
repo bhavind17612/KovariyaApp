@@ -57,8 +57,14 @@ export const ENDPOINTS = {
     CREATE: '/api/v1/goals',
     /** GET — all goals for a parent, by parent UUID */
     BY_PARENT: (parentUuid: string) => `/api/v1/goals/parent/${parentUuid}`,
-    /** GET — a single goal by its UUID */
+    /** GET — a single goal by its UUID (parent-app detail view) */
     DETAIL: (uuid: string) => `/api/v1/goals/${uuid}`,
+    /**
+     * GET — behaviour entries that contributed to a goal, with a running total
+     * and a progress summary. Admin-namespaced on the server but readable with
+     * the same `goals:read` permission the parent list uses.
+     */
+    PROGRESS: (uuid: string) => `/api/v1/goals/admin/${uuid}/progress`,
   },
 
   MISSIONS: {
@@ -98,11 +104,20 @@ export const ENDPOINTS = {
     ASPECT_SCORES: '/api/v1/analytics/aspects',
     DAY_LOGS: '/api/v1/analytics/day-logs',
     /** GET ?student_id=<uuid> — BSI score + week-over-week trend for a child */
-    BSI: '/api/v1/analytics/parent/bsi',
+    BSI: '/api/v1/analytics/parent/dbs',
     /** GET ?student_id=<uuid> — Family Score, Trust Meter & Parent Consistency cards */
     SCORE_CARDS: '/api/v1/analytics/parent/score-cards',
     /** GET ?language=<code> — AI guidance, strengths/weaknesses & badges for a child */
     INSIGHTS: (studentUuid: string) => `/api/v1/analytics/${studentUuid}/insights`,
+  },
+
+  ANNOUNCEMENTS: {
+    /** GET ?student_id=<uuid>&page=&limit= — published announcements relevant to a child */
+    PARENT_LIST: '/api/v1/announcements/parent',
+    /** GET ?student_id=<uuid> — count of unread published announcements for a child */
+    UNREAD_COUNT: '/api/v1/announcements/parent/unread-count',
+    /** POST ?student_id=<uuid> — marks every announcement visible to this child as read */
+    MARK_ALL_READ: '/api/v1/announcements/parent/mark-all-read',
   },
 
   NOTIFICATIONS: {

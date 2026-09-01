@@ -223,8 +223,8 @@ const SchoolSheet = ({
 };
 
 const GENDERS = [
-	{ key: 'male', label: 'Male', emoji: '👦' },
-	{ key: 'female', label: 'Female', emoji: '👧' },
+	{ key: 'male', label: 'Boy', emoji: '👦' },
+	{ key: 'female', label: 'Girl', emoji: '👧' },
 ];
 
 interface Props { navigation: any; route: any; }

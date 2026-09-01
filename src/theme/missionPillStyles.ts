@@ -74,12 +74,33 @@ export function goalStatusFloatingPalette(status: GoalStatus) {
         text: colors.growth,
         shadowColor: '#1A6B4A',
       };
-    case 'paused':
+    // Missed the window — read as a warning, not a neutral state.
+    case 'expired':
+      return {
+        bg: colors.peachSoft,
+        text: colors.error,
+        shadowColor: 'rgba(178, 46, 46, 0.35)',
+      };
+    case 'cancelled':
       return {
         bg: colors.surfaceMuted,
         text: colors.textMuted,
         shadowColor: 'rgba(60, 55, 75, 0.35)',
       };
+    // Scheduled but not started yet.
+    case 'upcoming':
+      return {
+        bg: colors.skySoft,
+        text: colors.info,
+        shadowColor: 'rgba(38, 118, 178, 0.35)',
+      };
+    case 'draft':
+      return {
+        bg: colors.surfaceMuted,
+        text: colors.textSecondary,
+        shadowColor: 'rgba(60, 55, 75, 0.35)',
+      };
+    // 'active'
     default:
       return {
         bg: colors.lavenderSoft,

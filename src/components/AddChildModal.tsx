@@ -55,8 +55,8 @@ function normalizeGrade(raw?: string | null): string {
   return '';
 }
 const GENDERS = [
-  { key: 'male', label: 'Male', marker: 'B' },
-  { key: 'female', label: 'Female', marker: 'G' },
+  { key: 'male', label: 'Boy', marker: 'B' },
+  { key: 'female', label: 'Girl', marker: 'G' },
 ];
 
 function PickerSheet({
@@ -535,6 +535,25 @@ export const AddChildModal = React.memo(function AddChildModal({
                 </DatePickerField>
               </Section>
 
+              <Section icon="school" iconBg={colors.skySoft} iconColor={colors.info} label="School">
+                <View>
+                  <Text style={styles.fieldLabel}>Select School</Text>
+                  <Pressable
+                    style={styles.inputRow}
+                    onPress={() => {
+                      setShowSchool(true);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                  >
+                    <Icon name="account-balance" size={20} color={colors.textMuted} />
+                    <Text style={[styles.inputText, !school && styles.inputMuted]} numberOfLines={1}>
+                      {school || 'Select your school...'}
+                    </Text>
+                    <Icon name="keyboard-arrow-down" size={20} color={colors.textSecondary} />
+                  </Pressable>
+                </View>
+              </Section>
+
               <Section icon="class" iconBg={colors.peachSoft} iconColor={colors.accent} label="School Details">
                 <View>
                   <Text style={styles.fieldLabel}>Select Standard</Text>
@@ -562,25 +581,6 @@ export const AddChildModal = React.memo(function AddChildModal({
                   autoCorrect={false}
                   leftIcon={<Icon name="class" size={20} color={colors.textMuted} />}
                 />
-              </Section>
-
-              <Section icon="school" iconBg={colors.skySoft} iconColor={colors.info} label="School">
-                <View>
-                  <Text style={styles.fieldLabel}>Select School</Text>
-                  <Pressable
-                    style={styles.inputRow}
-                    onPress={() => {
-                      setShowSchool(true);
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }}
-                  >
-                    <Icon name="account-balance" size={20} color={colors.textMuted} />
-                    <Text style={[styles.inputText, !school && styles.inputMuted]} numberOfLines={1}>
-                      {school || 'Select your school...'}
-                    </Text>
-                    <Icon name="keyboard-arrow-down" size={20} color={colors.textSecondary} />
-                  </Pressable>
-                </View>
               </Section>
 
               <Section icon="wc" iconBg={colors.mintSoft} iconColor={colors.growth} label="Gender">

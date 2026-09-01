@@ -26,24 +26,25 @@ const SHEET_CFG = { duration: 300, easing: Easing.out(Easing.cubic) };
 
 type Props = {
   visible: boolean;
-  /** Slug of the currently chosen aspect, or null when none is picked yet. */
-  selected: string | null;
+  /** Slugs of the currently chosen aspects. */
+  selectedIds: string[];
   aspects: ApiAspect[];
   loading?: boolean;
-  onSelect: (aspect: ApiAspect) => void;
+  onToggle: (aspect: ApiAspect) => void;
   onClose: () => void;
 };
 
 /**
- * Radio-style picker for the behaviour aspect a goal targets.
- * Mirrors LanguagePickerSheet so both sheets read the same.
+ * Multi-select checklist for the behaviour aspect(s) a goal targets.
+ * Tapping a row toggles it in place — the sheet stays open until the parent
+ * closes it (backdrop tap, X, or the Done button) so several can be picked.
  */
 export const AspectPickerSheet = React.memo(function AspectPickerSheet({
   visible,
-  selected,
+  selectedIds,
   aspects,
   loading = false,
-  onSelect,
+  onToggle,
   onClose,
 }: Props) {
   const insets = useSafeAreaInsets();
@@ -61,6 +62,8 @@ export const AspectPickerSheet = React.memo(function AspectPickerSheet({
     return null;
   }
 
+  const selectedCount = selectedIds.length;
+
   return (
     <Modal
       transparent
@@ -77,9 +80,9 @@ export const AspectPickerSheet = React.memo(function AspectPickerSheet({
 
         <View style={styles.header}>
           <View>
-            <Text style={styles.title}>Select Aspect</Text>
+            <Text style={styles.title}>Select Aspects</Text>
             <Text style={styles.subtitle}>
-              The goal will track progress for the behaviour aspect you choose
+              Choose one or more behaviour aspects this goal will track
             </Text>
           </View>
           <Pressable
@@ -112,7 +115,7 @@ export const AspectPickerSheet = React.memo(function AspectPickerSheet({
             bounces={false}
           >
             {aspects.map((aspect, index) => {
-              const isSelected = selected === aspect.id;
+              const isSelected = selectedIds.includes(aspect.id);
               return (
                 <React.Fragment key={aspect.id}>
                   <Pressable
@@ -123,10 +126,9 @@ export const AspectPickerSheet = React.memo(function AspectPickerSheet({
                     ]}
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      onSelect(aspect);
-                      onClose();
+                      onToggle(aspect);
                     }}
-                    accessibilityRole="radio"
+                    accessibilityRole="checkbox"
                     accessibilityState={{ checked: isSelected }}
                     accessibilityLabel={aspect.name}
                   >
@@ -143,9 +145,9 @@ export const AspectPickerSheet = React.memo(function AspectPickerSheet({
                       </Text>
                     </View>
                     {isSelected ? (
-                      <Icon name="check-circle" size={22} color={colors.primary} />
+                      <Icon name="check-box" size={22} color={colors.primary} />
                     ) : (
-                      <Icon name="radio-button-unchecked" size={22} color={colors.textMuted} />
+                      <Icon name="check-box-outline-blank" size={22} color={colors.textMuted} />
                     )}
                   </Pressable>
                   {index < aspects.length - 1 ? <View style={styles.divider} /> : null}
@@ -154,6 +156,19 @@ export const AspectPickerSheet = React.memo(function AspectPickerSheet({
             })}
           </ScrollView>
         )}
+
+        {!loading && aspects.length > 0 ? (
+          <Pressable
+            onPress={onClose}
+            style={({ pressed }) => [styles.doneBtn, pressed && styles.doneBtnPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={`Done, ${selectedCount} aspect${selectedCount === 1 ? '' : 's'} selected`}
+          >
+            <Text style={styles.doneBtnText}>
+              Done{selectedCount > 0 ? ` · ${selectedCount} selected` : ''}
+            </Text>
+          </Pressable>
+        ) : null}
       </Animated.View>
     </Modal>
   );
@@ -267,6 +282,22 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 13,
     lineHeight: 20,
+  },
+  doneBtn: {
+    marginTop: spacing.sm,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: borderRadius.large,
+    backgroundColor: colors.primary,
+  },
+  doneBtnPressed: {
+    opacity: 0.88,
+  },
+  doneBtnText: {
+    ...textStyles.bodyLarge,
+    fontWeight: '700',
+    color: colors.surface,
   },
 });
 

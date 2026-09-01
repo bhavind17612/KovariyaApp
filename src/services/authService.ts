@@ -92,6 +92,9 @@ function mapRawChild(c: Record<string, unknown>): Child {
     schoolName: (c.school_name ?? c.schoolName) as string | undefined,
     admissionNumber: (c.student_uid ?? c.admission_number ?? c.roll_number) as string | undefined,
     status: c.status as 'active' | 'inactive' | undefined,
+    // Gates child selection: the API refuses ratings/goals/missions for a
+    // child that is not verified, so the UI must not let one be picked.
+    verificationStatus: c.verification_status as 'pending_verification' | 'verified' | undefined,
     dailyScore: c.daily_score as number | undefined,
     trustMeter: c.trust_meter as number | undefined,
     confidenceIndicator: c.confidence_indicator as number | undefined,

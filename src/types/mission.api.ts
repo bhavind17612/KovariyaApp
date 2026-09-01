@@ -24,6 +24,8 @@ export interface ApiTodayMission {
   startDate: string;
   endDate: string;
   activeStatus: boolean;
+  /** Whether this mission accepts an optional photo proof when marked done. */
+  allowUploadProof?: boolean;
 }
 
 export interface ApiMissionLog {

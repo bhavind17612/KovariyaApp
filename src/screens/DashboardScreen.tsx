@@ -52,7 +52,7 @@ import {
 } from '../theme';
 import { Child } from '../types';
 import { useToast } from '../context/ToastContext';
-import { useChildren } from '../context/ChildrenContext';
+import { useChildren, isChildVerified } from '../context/ChildrenContext';
 import {
   DASHBOARD_RATING_ASPECTS,
   formatDailyRatingSum,
@@ -410,6 +410,12 @@ const DashboardScreen: React.FC = () => {
   );
 
   const handleMarkDone = useCallback(() => {
+    // Only offer the photo-proof flow when the mission explicitly allows it —
+    // otherwise mark done straight away, same as MissionDetailScreen's canUploadProof gate.
+    if (todayMission?.allowUploadProof !== true) {
+      submitMissionLog('done');
+      return;
+    }
     Alert.alert(
       'Add a photo proof?',
       'Attach a photo as proof for this mission, or mark it done without one.',
@@ -418,7 +424,7 @@ const DashboardScreen: React.FC = () => {
         { text: 'Add Photo', onPress: () => setProofModalOpen(true) },
       ]
     );
-  }, [submitMissionLog]);
+  }, [submitMissionLog, todayMission?.allowUploadProof]);
 
   const handleMarkMissed = useCallback(() => {
     submitMissionLog('missed');
@@ -1085,10 +1091,18 @@ const DashboardScreen: React.FC = () => {
               >
                 {children.map((child) => {
                   const isSelected = child.id === selectedChildId;
+                  // Unverified children stay listed but inert: the API rejects
+                  // every action against them until an admin verifies the profile.
+                  const verified = isChildVerified(child);
                   return (
                     <Pressable
                       key={child.id}
-                      style={[styles.childPickerRow, isSelected && styles.childPickerRowSelected]}
+                      disabled={!verified}
+                      style={[
+                        styles.childPickerRow,
+                        isSelected && styles.childPickerRowSelected,
+                        !verified && styles.childPickerRowDisabled,
+                      ]}
                       onPress={() => {
                         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                         setSelectedChildId(child.id);
@@ -1099,9 +1113,9 @@ const DashboardScreen: React.FC = () => {
                         });
                       }}
                       accessibilityRole="button"
-                      accessibilityState={{ selected: isSelected }}
+                      accessibilityState={{ selected: isSelected, disabled: !verified }}
                       accessibilityLabel={`${child.name}, age ${child.age}${isSelected ? ', selected' : ''}`}
-                      android_ripple={{ color: colors.primaryLight }}
+                      android_ripple={verified ? { color: colors.primaryLight } : undefined}
                     >
                       <View style={styles.childPickerRowLeft}>
                         <View
@@ -1117,9 +1131,17 @@ const DashboardScreen: React.FC = () => {
                         <View style={styles.childPickerRowMain}>
                           <Text style={styles.childPickerRowName}>{child.name}</Text>
                           <Text style={styles.childPickerRowMeta}>Age {child.age} years</Text>
+                          {!verified ? (
+                            <View style={styles.childPickerPendingChip}>
+                              <Icon name="hourglass-empty" size={11} color={colors.accent} />
+                              <Text style={styles.childPickerPendingText}>Pending verification</Text>
+                            </View>
+                          ) : null}
                         </View>
                       </View>
-                      {isSelected ? (
+                      {!verified ? (
+                        <Icon name="lock-outline" size={22} color={colors.textMuted} />
+                      ) : isSelected ? (
                         <Icon name="check-circle" size={26} color={colors.primary} />
                       ) : (
                         <Icon name="radio-button-unchecked" size={24} color={colors.textMuted} />
@@ -1399,6 +1421,29 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'transparent',
     backgroundColor: colors.background,
+  },
+  childPickerRowDisabled: {
+    opacity: 0.45,
+  },
+  childPickerPendingChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    marginTop: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.peachSoft,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(232, 160, 74, 0.35)',
+  },
+  childPickerPendingText: {
+    ...textStyles.caption,
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.accent,
+    letterSpacing: 0.2,
   },
   childPickerRowSelected: {
     backgroundColor: colors.lavenderSoft,

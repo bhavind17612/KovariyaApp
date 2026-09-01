@@ -19,6 +19,7 @@ import { AuthProvider } from './src/context/AuthContext';
 import { ConfirmDialogProvider } from './src/context/ConfirmDialogContext';
 import { ToastProvider } from './src/context/ToastContext';
 import { ChildrenProvider } from './src/context/ChildrenContext';
+import { AnnouncementsProvider } from './src/context/AnnouncementsContext';
 import { queryClient } from './src/query/queryClient';
 
 function App() {
@@ -31,8 +32,10 @@ function App() {
               <ConfirmDialogProvider>
                 <AuthProvider>
                   <ChildrenProvider>
-                    <ExpoStatusBar style="dark" />
-                    <AppNavigator />
+                    <AnnouncementsProvider>
+                      <ExpoStatusBar style="dark" />
+                      <AppNavigator />
+                    </AnnouncementsProvider>
                   </ChildrenProvider>
                 </AuthProvider>
               </ConfirmDialogProvider>

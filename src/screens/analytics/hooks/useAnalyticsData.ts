@@ -90,6 +90,12 @@ export function useAnalyticsData() {
 		}
 	}, [heatmapMonth]);
 
+	/** Jumps the heatmap directly to an arbitrary year/month (0-based). */
+	const setHeatmapPeriod = useCallback((y: number, m: number) => {
+		setHeatmapYear(y);
+		setHeatmapMonth(m);
+	}, []);
+
 	/* ── BSI (live API) ── */
 	const [bsiPeriod, setBsiPeriod] = useState<'weekly' | 'monthly'>('weekly');
 	const [studentBsi, setStudentBsi] = useState<StudentBsi | null>(null);
@@ -359,6 +365,7 @@ export function useAnalyticsData() {
 		heatmapMonth,
 		prevMonth,
 		nextMonth,
+		setHeatmapPeriod,
 		summaryPeriod,
 		setSummaryPeriod,
 		bsiPeriod,

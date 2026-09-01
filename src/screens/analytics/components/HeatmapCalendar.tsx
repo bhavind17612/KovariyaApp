@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, Pressable, StyleSheet, useWindowDimensions, Platform } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, Pressable, StyleSheet, useWindowDimensions, Platform, Modal } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
@@ -20,6 +20,8 @@ interface HeatmapCalendarProps {
 	month: number;
 	onPrevMonth: () => void;
 	onNextMonth: () => void;
+	/** Called with (year, month) — month is 0-based — when user picks a period from the popup */
+	onSelectMonth?: (year: number, month: number) => void;
 	/** Called with date string (YYYY-MM-DD) and its score when user taps a cell */
 	onDayPress?: (date: string, score: number | null) => void;
 }
@@ -50,9 +52,29 @@ const HeatmapCalendar: React.FC<HeatmapCalendarProps> = ({
 	month,
 	onPrevMonth,
 	onNextMonth,
+	onSelectMonth,
 	onDayPress,
 }) => {
 	const { width: windowWidth } = useWindowDimensions();
+	const now = new Date();
+	const currentYear = now.getFullYear();
+	const currentMonth = now.getMonth();
+
+	const [showPicker, setShowPicker] = useState(false);
+	const [pickerYear, setPickerYear] = useState(year);
+
+	const openPicker = () => {
+		setPickerYear(year);
+		setShowPicker(true);
+	};
+
+	const isFutureYear = pickerYear >= currentYear;
+
+	const selectMonth = (m: number) => {
+		if (pickerYear === currentYear && m > currentMonth) return;
+		setShowPicker(false);
+		onSelectMonth?.(pickerYear, m);
+	};
 	const cardInnerWidth = windowWidth - spacing.xl * 2 - spacing.md * 2;
 	const cellGap = 4;
 	const cellSize = Math.floor((cardInnerWidth - cellGap * 6) / 7);
@@ -93,15 +115,31 @@ const HeatmapCalendar: React.FC<HeatmapCalendarProps> = ({
 						</View>
 					</View>
 					<View style={s.heatmapNavWrap}>
-						<Text style={s.heatmapMonthPill}>{MONTH_NAMES[month].slice(0, 3)} {year}</Text>
-						{/* <View style={s.heatmapNav}>
-						<Pressable onPress={onPrevMonth} style={s.heatmapNavBtn}>
-							<Icon name="chevron-left" size={20} color={colors.textSecondary} />
+						<Pressable
+							onPress={openPicker}
+							style={s.heatmapMonthPillBtn}
+							accessibilityRole="button"
+							accessibilityLabel="Choose month and year"
+						>
+							<Text style={s.heatmapMonthPill}>{MONTH_NAMES[month].slice(0, 3)} {year}</Text>
+							<Icon name="arrow-drop-down" size={16} color={colors.primary} />
 						</Pressable>
-						<Pressable onPress={onNextMonth} style={s.heatmapNavBtn}>
-							<Icon name="chevron-right" size={20} color={colors.textSecondary} />
-						</Pressable>
-						</View> */}
+						<View style={s.heatmapNav}>
+							<Pressable onPress={onPrevMonth} style={s.heatmapNavBtn}>
+								<Icon name="chevron-left" size={20} color={colors.textSecondary} />
+							</Pressable>
+							<Pressable
+								onPress={onNextMonth}
+								style={s.heatmapNavBtn}
+								disabled={year === currentYear && month === currentMonth}
+							>
+								<Icon
+									name="chevron-right"
+									size={20}
+									color={year === currentYear && month === currentMonth ? colors.border : colors.textSecondary}
+								/>
+							</Pressable>
+						</View>
 					</View>
 				</View>
 
@@ -185,6 +223,74 @@ const HeatmapCalendar: React.FC<HeatmapCalendarProps> = ({
 					))}
 				</View>
 			</Card>
+
+			<Modal
+				transparent
+				visible={showPicker}
+				animationType="fade"
+				onRequestClose={() => setShowPicker(false)}
+			>
+				<Pressable style={s.pickerOverlay} onPress={() => setShowPicker(false)}>
+					<Pressable style={s.pickerCard} onPress={() => {}}>
+						<View style={s.pickerHeader}>
+							<Text style={s.pickerTitle}>Select Month & Year</Text>
+							<Pressable onPress={() => setShowPicker(false)} hitSlop={8}>
+								<Icon name="close" size={20} color={colors.textSecondary} />
+							</Pressable>
+						</View>
+
+						<View style={s.pickerYearRow}>
+							<Pressable
+								onPress={() => setPickerYear((y) => y - 1)}
+								style={s.heatmapNavBtn}
+							>
+								<Icon name="chevron-left" size={20} color={colors.textSecondary} />
+							</Pressable>
+							<Text style={s.pickerYearText}>{pickerYear}</Text>
+							<Pressable
+								onPress={() => setPickerYear((y) => y + 1)}
+								style={s.heatmapNavBtn}
+								disabled={isFutureYear}
+							>
+								<Icon
+									name="chevron-right"
+									size={20}
+									color={isFutureYear ? colors.border : colors.textSecondary}
+								/>
+							</Pressable>
+						</View>
+
+						<View style={s.pickerMonthGrid}>
+							{MONTH_NAMES.map((name, m) => {
+								const isSelected = pickerYear === year && m === month;
+								const isDisabled = pickerYear === currentYear && m > currentMonth;
+								return (
+									<Pressable
+										key={name}
+										onPress={() => selectMonth(m)}
+										disabled={isDisabled}
+										style={[
+											s.pickerMonthCell,
+											isSelected && s.pickerMonthCellActive,
+											isDisabled && s.pickerMonthCellDisabled,
+										]}
+									>
+										<Text
+											style={[
+												s.pickerMonthText,
+												isSelected && s.pickerMonthTextActive,
+												isDisabled && s.pickerMonthTextDisabled,
+											]}
+										>
+											{name.slice(0, 3)}
+										</Text>
+									</Pressable>
+								);
+							})}
+						</View>
+					</Pressable>
+				</Pressable>
+			</Modal>
 		</Animated.View>
 	);
 };
@@ -275,16 +381,93 @@ const s = StyleSheet.create({
 		flexDirection: 'row',
 		gap: 4,
 	},
+	heatmapMonthPillBtn: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		paddingHorizontal: spacing.md,
+		paddingVertical: 6,
+		borderRadius: borderRadius.full,
+		backgroundColor: colors.lavenderSoft,
+	},
 	heatmapMonthPill: {
 		...textStyles.caption,
 		fontSize: 11,
 		fontWeight: '700',
 		color: colors.primary,
-		paddingHorizontal: spacing.md,
-		paddingVertical: 6,
-		borderRadius: borderRadius.full,
+	},
+	pickerOverlay: {
+		flex: 1,
+		backgroundColor: 'rgba(0,0,0,0.45)',
+		alignItems: 'center',
+		justifyContent: 'center',
+		paddingHorizontal: spacing.xl,
+	},
+	pickerCard: {
+		width: '100%',
+		maxWidth: 360,
+		backgroundColor: colors.surface,
+		borderRadius: borderRadius.xl,
+		padding: spacing.lg,
+	},
+	pickerHeader: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		marginBottom: spacing.md,
+	},
+	pickerTitle: {
+		...textStyles.headingMedium,
+		fontSize: 16,
+		fontWeight: '800',
+		color: colors.ink,
+	},
+	pickerYearRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: spacing.lg,
+		marginBottom: spacing.md,
+	},
+	pickerYearText: {
+		...textStyles.headingMedium,
+		fontSize: 18,
+		fontWeight: '800',
+		color: colors.ink,
+		minWidth: 64,
+		textAlign: 'center',
+	},
+	pickerMonthGrid: {
+		flexDirection: 'row',
+		flexWrap: 'wrap',
+		gap: spacing.sm,
+	},
+	pickerMonthCell: {
+		width: '30%',
+		paddingVertical: spacing.sm + 2,
+		borderRadius: borderRadius.medium,
+		alignItems: 'center',
+		justifyContent: 'center',
+		backgroundColor: colors.surfaceMuted,
+		borderWidth: 1,
+		borderColor: 'transparent',
+	},
+	pickerMonthCellActive: {
 		backgroundColor: colors.lavenderSoft,
-		overflow: 'hidden',
+		borderColor: colors.primary,
+	},
+	pickerMonthCellDisabled: {
+		opacity: 0.4,
+	},
+	pickerMonthText: {
+		...textStyles.bodyMedium,
+		fontWeight: '700',
+		color: colors.textPrimary,
+	},
+	pickerMonthTextActive: {
+		color: colors.primary,
+	},
+	pickerMonthTextDisabled: {
+		color: colors.textMuted,
 	},
 	heatmapNavBtn: {
 		width: 32,

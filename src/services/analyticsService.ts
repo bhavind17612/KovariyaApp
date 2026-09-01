@@ -59,10 +59,10 @@ function mapStudentBsi(raw: ApiStudentBsi): StudentBsi {
 class AnalyticsService {
   /** Today's BSI score + trend for a child. Returns null when none is available. */
   async getBsi(studentUuid: string): Promise<BsiSnapshot | null> {
-    const res = await api.get<{ bsi: BsiSnapshot | null }>(ENDPOINTS.ANALYTICS.BSI, {
+    const res = await api.get<{ dbs: BsiSnapshot | null }>(ENDPOINTS.ANALYTICS.BSI, {
       params: { student_id: studentUuid },
     });
-    return res.data.data?.bsi ?? null;
+    return res.data.data?.dbs ?? null;
   }
 
   /** Behaviour Score Index for a student over a weekly/monthly window. */

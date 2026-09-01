@@ -426,6 +426,9 @@ const ProfileScreen: React.FC = () => {
             ) : (
               childrenList.map((child, index) => {
                 const subtitle = childProfileSubtitle(child);
+                // Still editable — a parent may need to correct details before an
+                // admin verifies — but visually flagged as not yet usable.
+                const pending = child.verificationStatus === 'pending_verification';
                 return (
                   <Pressable
                     key={child.id}
@@ -433,6 +436,7 @@ const ProfileScreen: React.FC = () => {
                     style={({ pressed }) => [
                       styles.childRow,
                       index < childrenList.length - 1 && styles.childRowBorder,
+                      pending && styles.childRowPending,
                       pressed && styles.pressedOpacity,
                     ]}
                     accessibilityRole="button"
@@ -448,6 +452,12 @@ const ProfileScreen: React.FC = () => {
                     <View style={styles.childInfo}>
                       <Text style={styles.childName}>{child.name}</Text>
                       <Text style={styles.childAge}>Age {child.age}</Text>
+                      {pending ? (
+                        <View style={styles.pendingChip}>
+                          <Icon name="hourglass-empty" size={11} color={colors.accent} />
+                          <Text style={styles.pendingChipText}>Pending verification</Text>
+                        </View>
+                      ) : null}
                       {subtitle ? (
                         <Text style={styles.childMeta} numberOfLines={2}>
                           {subtitle}
@@ -789,6 +799,29 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
     fontWeight: '600',
+  },
+  childRowPending: {
+    opacity: 0.55,
+  },
+  pendingChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    marginTop: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.peachSoft,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(232, 160, 74, 0.35)',
+  },
+  pendingChipText: {
+    ...textStyles.caption,
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.accent,
+    letterSpacing: 0.2,
   },
   childMeta: {
     ...textStyles.caption,

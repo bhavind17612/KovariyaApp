@@ -94,6 +94,7 @@ const AnalyticsScreen: React.FC = () => {
 		heatmapMonth,
 		prevMonth,
 		nextMonth,
+		setHeatmapPeriod,
 		summaryPeriod,
 		setSummaryPeriod,
 		bsiPeriod,
@@ -204,6 +205,7 @@ const AnalyticsScreen: React.FC = () => {
 					month={heatmapMonth}
 					onPrevMonth={prevMonth}
 					onNextMonth={nextMonth}
+					onSelectMonth={setHeatmapPeriod}
 					onDayPress={handleDayPress}
 				/>
 

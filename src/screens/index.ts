@@ -14,3 +14,4 @@ export { default as HelpSupportScreen } from './HelpSupportScreen';
 export { default as SendFeedbackScreen } from './SendFeedbackScreen';
 export { default as AboutScreen } from './AboutScreen';
 export { default as BadgesScreen } from './BadgesScreen';
+export { default as GoalDetailScreen } from './GoalDetailScreen';

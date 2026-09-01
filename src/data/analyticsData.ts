@@ -351,6 +351,7 @@ const GOALS_BY_CHILD: Record<string, Goal[]> = {
       rewardName: 'Movie night',
       rewardValue: '$25 voucher',
       status: 'active',
+      aspectIds: [],
     },
   ],
   '2': [
@@ -364,6 +365,7 @@ const GOALS_BY_CHILD: Record<string, Goal[]> = {
       endDate: '2026-04-30',
       rewardName: 'New art supplies',
       status: 'active',
+      aspectIds: [],
     },
   ],
   '3': [
@@ -377,6 +379,7 @@ const GOALS_BY_CHILD: Record<string, Goal[]> = {
       endDate: '2026-04-30',
       rewardName: 'Choose weekend activity',
       status: 'completed',
+      aspectIds: [],
     },
   ],
 };

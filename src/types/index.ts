@@ -22,6 +22,13 @@ export interface Child {
   schoolId?: string;
   /** School-issued admission / roll number */
   admissionNumber?: string;
+  /**
+   * Backend verification state. A child added by a parent starts as
+   * `pending_verification`; the API rejects ratings, goals and mission logs
+   * against them until an admin verifies the profile. Optional because not
+   * every payload carries it.
+   */
+  verificationStatus?: 'pending_verification' | 'verified';
   status?: ChildSchoolStatus;
   notes?: string;
   dailyScore?: number;
@@ -38,7 +45,25 @@ export interface BehaviourAspect {
   note?: string;
 }
 
-export type GoalStatus = 'active' | 'completed' | 'paused';
+/**
+ * Mirrors the server enum exactly (goals.repository.ts). The app previously knew
+ * only active/completed/paused, so expired, upcoming and cancelled goals were all
+ * coerced to "Active". Note there is no 'paused' server-side.
+ */
+export type GoalStatus =
+  | 'draft'
+  | 'upcoming'
+  | 'active'
+  | 'completed'
+  | 'expired'
+  | 'cancelled';
+
+/** Statuses the server treats as final — no further transitions. */
+export const TERMINAL_GOAL_STATUSES: readonly GoalStatus[] = [
+  'completed',
+  'expired',
+  'cancelled',
+];
 
 /**
  * Parent-defined reward goals. Progress is tracked in raw points only;
@@ -64,8 +89,12 @@ export interface Goal {
    * Numeric behaviour_aspects.id this goal targets. The list endpoint selects
    * `goals.*` with no join, so the aspect's name/icon/colour must be resolved
    * against GET /behaviour/aspects on the client.
+   * @deprecated Kept for goals created before multi-aspect support shipped —
+   * new goals populate `aspectIds` instead. Equal to `aspectIds[0]`.
    */
   aspectId?: number;
+  /** Every behaviour_aspects.id this goal targets (a goal can target several). */
+  aspectIds: number[];
   /** ISO timestamp the goal was created (used for sorting newest-first) */
   createdAt?: string;
 }

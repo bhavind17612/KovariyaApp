@@ -27,7 +27,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { setStatusBarStyle } from 'expo-status-bar';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { AppGradientHeader, AppRefreshControl, AspectPickerSheet, Button, Card, InputField, GoalsListSkeleton } from '../components';
 import { DatePickerField } from '../components/DatePickerField';
 import { behaviourService } from '../services/behaviourService';
@@ -68,11 +68,17 @@ function parseRewardValue(raw: string): number | null {
 function formatGoalStatusLabel(status: GoalStatus): string {
 	switch (status) {
 		case 'active':
-			return 'Active';
+			return 'In Progress';
+		case 'upcoming':
+			return 'Upcoming';
 		case 'completed':
 			return 'Completed';
-		case 'paused':
-			return 'Paused';
+		case 'expired':
+			return 'Expired';
+		case 'cancelled':
+			return 'Cancelled';
+		case 'draft':
+			return 'Draft';
 		default:
 			return status;
 	}
@@ -82,10 +88,16 @@ function goalStatusIcon(status: GoalStatus): string {
 	switch (status) {
 		case 'active':
 			return 'play-circle-outline';
+		case 'upcoming':
+			return 'schedule';
 		case 'completed':
 			return 'check-circle';
-		case 'paused':
-			return 'pause-circle-outline';
+		case 'expired':
+			return 'event-busy';
+		case 'cancelled':
+			return 'cancel';
+		case 'draft':
+			return 'edit-note';
 		default:
 			return 'circle';
 	}
@@ -106,7 +118,8 @@ function rewardDisplay(goal: Goal): string {
 
 function progressBarColor(pct: number, status: GoalStatus): string {
 	if (status === 'completed') return colors.growth;
-	if (status === 'paused') return colors.textMuted;
+	if (status === 'expired') return colors.error;
+	if (status === 'cancelled' || status === 'draft') return colors.textMuted;
 	if (pct >= 75) return colors.growth;
 	if (pct >= 40) return colors.primary;
 	return colors.accent;
@@ -217,6 +230,7 @@ const GoalsScreen: React.FC = () => {
 	const { showToast } = useToast();
 	const { user } = useAuth();
 	const { selectedChildId } = useChildren();
+	const navigation = useNavigation<any>();
 	const insets = useSafeAreaInsets();
 	const [goals, setGoals] = useState<Goal[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -309,8 +323,20 @@ const GoalsScreen: React.FC = () => {
 	// ── Behaviour aspect (goals are aspect-scoped) ───────────────────────────
 	const [aspects, setAspects] = useState<ApiAspect[]>([]);
 	const [aspectsLoading, setAspectsLoading] = useState(false);
-	const [formAspect, setFormAspect] = useState<ApiAspect | null>(null);
+	const [formAspects, setFormAspects] = useState<ApiAspect[]>([]);
 	const [aspectPickerOpen, setAspectPickerOpen] = useState(false);
+
+	const toggleFormAspect = useCallback((aspect: ApiAspect) => {
+		setFormAspects((prev) =>
+			prev.some((a) => a.id === aspect.id)
+				? prev.filter((a) => a.id !== aspect.id)
+				: [...prev, aspect]
+		);
+	}, []);
+
+	const removeFormAspect = useCallback((aspectId: string) => {
+		setFormAspects((prev) => prev.filter((a) => a.id !== aspectId));
+	}, []);
 
 	// Same endpoint the dashboard rating tiles use. Passing the selected child
 	// keeps the localised names and per-child progress consistent with it.
@@ -351,7 +377,16 @@ const GoalsScreen: React.FC = () => {
 
 	const sortedGoals = useMemo(() => {
 		return [...goals].sort((a, b) => {
-			const pri = (g: Goal) => (g.status === 'active' ? 0 : g.status === 'paused' ? 1 : 2);
+			// Live goals first, then not-yet-started, then anything finished.
+			const STATUS_ORDER: Record<GoalStatus, number> = {
+				active: 0,
+				upcoming: 1,
+				draft: 2,
+				completed: 3,
+				expired: 4,
+				cancelled: 5,
+			};
+			const pri = (g: Goal) => STATUS_ORDER[g.status] ?? 9;
 			const p = pri(a) - pri(b);
 			if (p !== 0) return p;
 			// Within the same status, newest created_at first.
@@ -378,7 +413,7 @@ const GoalsScreen: React.FC = () => {
 		future.setDate(future.getDate() + 30);
 		setFormEnd(toIsoDate(future));
 		setFormTargetRaw('');
-		setFormAspect(null);
+		setFormAspects([]);
 		setFormError(null);
 	}, []);
 
@@ -411,9 +446,9 @@ const GoalsScreen: React.FC = () => {
 			return;
 		}
 
-		// Goals are aspect-scoped; the API rejects a create without a valid aspect_id.
-		if (!formAspect) {
-			setFormError('Select the behaviour aspect this goal targets.');
+		// Goals are aspect-scoped; the API rejects a create without at least one aspect_id.
+		if (formAspects.length === 0) {
+			setFormError('Select at least one behaviour aspect this goal targets.');
 			Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
 			return;
 		}
@@ -451,9 +486,9 @@ const GoalsScreen: React.FC = () => {
 
 		const payload: CreateGoalPayload = {
 			student_uuid: selectedChildId,
-			// The numeric behaviour_aspects.id — NOT the slug in `aspect.id`.
-			// The API validates this with z.number().int().positive().
-			aspect_id: formAspect.aspectId,
+			// The numeric behaviour_aspects.id values — NOT the slugs in `aspect.id`.
+			// The API validates each with z.number().int().positive().
+			aspect_ids: formAspects.map((a) => a.aspectId),
 			goal_name: title,
 			goal_description: null,
 			reward_name: rewardName,
@@ -486,7 +521,7 @@ const GoalsScreen: React.FC = () => {
 		formStart,
 		formEnd,
 		formTargetRaw,
-		formAspect,
+		formAspects,
 		selectedChildId,
 		loadGoals,
 		showToast,
@@ -547,10 +582,11 @@ const GoalsScreen: React.FC = () => {
 					const statusPal = goalStatusFloatingPalette(goal.status);
 					const isCompleted = goal.status === 'completed';
 					const barColor = progressBarColor(pct, goal.status);
-					// Undefined while aspects are still loading, or if the goal points at
-					// an aspect no longer in the list — the chip is simply omitted then.
-					const goalAspect =
-						goal.aspectId != null ? aspectById.get(goal.aspectId) : undefined;
+					// Empty while aspects are still loading, or if the goal points at
+					// aspects no longer in the list — those chips are simply omitted then.
+					const goalAspects = goal.aspectIds
+						.map((id) => aspectById.get(id))
+						.filter((a): a is ApiAspect => a != null);
 					return (
 						<Animated.View
 							key={goal.id}
@@ -568,11 +604,14 @@ const GoalsScreen: React.FC = () => {
 								])}
 							>
 								<Pressable
+									onPress={() => navigation.navigate('GoalDetail', { goalId: goal.id })}
 									style={({ pressed }) => [pressed && styles.cardPressed]}
 									accessibilityRole="button"
 									accessibilityLabel={
 											`${goal.title}. ${formatGoalStatusLabel(goal.status)}.` +
-											(goalAspect ? ` Aspect: ${goalAspect.name}.` : '')
+											(goalAspects.length
+												? ` Aspects: ${goalAspects.map((a) => a.name).join(', ')}.`
+												: '')
 										}
 								>
 									{/* Card header row */}
@@ -609,28 +648,33 @@ const GoalsScreen: React.FC = () => {
 										</View>
 									</View>
 
-									{/* Aspect this goal targets */}
-									{goalAspect ? (
-										<View
-											style={[
-												styles.aspectChip,
-												{
-													backgroundColor: `${goalAspect.color}14`,
-													borderColor: `${goalAspect.color}40`,
-												},
-											]}
-										>
-											<Icon
-												name={goalAspect.iconName || 'category'}
-												size={13}
-												color={goalAspect.color || colors.primary}
-											/>
-											<Text
-												style={[styles.aspectChipText, { color: goalAspect.color || colors.primary }]}
-												numberOfLines={1}
-											>
-												{goalAspect.name}
-											</Text>
+									{/* Aspect(s) this goal targets */}
+									{goalAspects.length > 0 ? (
+										<View style={styles.aspectChipRow}>
+											{goalAspects.map((goalAspect) => (
+												<View
+													key={goalAspect.id}
+													style={[
+														styles.aspectChip,
+														{
+															backgroundColor: `${goalAspect.color}14`,
+															borderColor: `${goalAspect.color}40`,
+														},
+													]}
+												>
+													<Icon
+														name={goalAspect.iconName || 'category'}
+														size={13}
+														color={goalAspect.color || colors.primary}
+													/>
+													<Text
+														style={[styles.aspectChipText, { color: goalAspect.color || colors.primary }]}
+														numberOfLines={1}
+													>
+														{goalAspect.name}
+													</Text>
+												</View>
+											))}
 										</View>
 									) : null}
 
@@ -762,50 +806,83 @@ const GoalsScreen: React.FC = () => {
 									<View style={[styles.formSectionIconOrb, { backgroundColor: colors.lavenderSoft }]}>
 										<Icon name="category" size={16} color={colors.primary} />
 									</View>
-									<Text style={styles.formSectionTitle}>Aspect</Text>
+									<Text style={styles.formSectionTitle}>Aspects</Text>
 								</View>
 								<View style={styles.formSectionBody}>
 									<Pressable
 										onPress={() => setAspectPickerOpen(true)}
 										style={({ pressed }) => [
 											styles.aspectField,
-											!formAspect && styles.aspectFieldEmpty,
+											formAspects.length === 0 && styles.aspectFieldEmpty,
 											pressed && styles.aspectFieldPressed,
 										]}
 										accessibilityRole="button"
 										accessibilityLabel={
-											formAspect
-												? `Behaviour aspect: ${formAspect.name}. Tap to change.`
-												: 'Select behaviour aspect'
+											formAspects.length > 0
+												? `${formAspects.length} behaviour aspects selected. Tap to change.`
+												: 'Select behaviour aspects'
 										}
 									>
 										<View
 											style={[
 												styles.aspectFieldOrb,
 												{
-													backgroundColor: formAspect
-														? `${formAspect.color}1F`
-														: colors.surfaceMuted,
+													backgroundColor:
+														formAspects.length > 0
+															? `${formAspects[0].color}1F`
+															: colors.surfaceMuted,
 												},
 											]}
 										>
 											<Icon
-												name={formAspect?.iconName || 'category'}
+												name={formAspects[0]?.iconName || 'category'}
 												size={18}
-												color={formAspect?.color || colors.textMuted}
+												color={formAspects[0]?.color || colors.textMuted}
 											/>
 										</View>
 										<Text
 											style={[
 												styles.aspectFieldText,
-												!formAspect && styles.aspectFieldPlaceholder,
+												formAspects.length === 0 && styles.aspectFieldPlaceholder,
 											]}
 											numberOfLines={1}
 										>
-											{formAspect ? formAspect.name : 'Select an aspect'}
+											{formAspects.length > 0
+												? `${formAspects.length} aspect${formAspects.length === 1 ? '' : 's'} selected`
+												: 'Select one or more aspects'}
 										</Text>
 										<Icon name="expand-more" size={22} color={colors.textMuted} />
 									</Pressable>
+
+									{formAspects.length > 0 ? (
+										<View style={styles.aspectChipRow}>
+											{formAspects.map((aspect) => (
+												<Pressable
+													key={aspect.id}
+													onPress={() => removeFormAspect(aspect.id)}
+													style={[
+														styles.aspectChip,
+														{ backgroundColor: `${aspect.color}14`, borderColor: `${aspect.color}40` },
+													]}
+													accessibilityRole="button"
+													accessibilityLabel={`Remove ${aspect.name}`}
+												>
+													<Icon
+														name={aspect.iconName || 'category'}
+														size={13}
+														color={aspect.color || colors.primary}
+													/>
+													<Text
+														style={[styles.aspectChipText, { color: aspect.color || colors.primary }]}
+														numberOfLines={1}
+													>
+														{aspect.name}
+													</Text>
+													<Icon name="close" size={13} color={aspect.color || colors.primary} />
+												</Pressable>
+											))}
+										</View>
+									) : null}
 								</View>
 							</View>
 
@@ -847,7 +924,7 @@ const GoalsScreen: React.FC = () => {
 									<View style={styles.fieldGapTight} />
 									<InputField
 										label="Value (optional)"
-										placeholder="e.g. $25 or extra 30 min"
+										placeholder="e.g. Rs. 25 or extra 30 min"
 										value={formRewardValue}
 										onChangeText={setFormRewardValue}
 										leftIcon={<Icon name="sell" size={18} color={colors.textMuted} />}
@@ -941,11 +1018,11 @@ const GoalsScreen: React.FC = () => {
 						*/}
 						<AspectPickerSheet
 							visible={aspectPickerOpen}
-							selected={formAspect?.id ?? null}
+							selectedIds={formAspects.map((a) => a.id)}
 							aspects={aspects}
 							loading={aspectsLoading}
-							onSelect={(aspect) => {
-								setFormAspect(aspect);
+							onToggle={(aspect) => {
+								toggleFormAspect(aspect);
 								setFormError(null);
 							}}
 							onClose={() => setAspectPickerOpen(false)}
@@ -1153,14 +1230,19 @@ const styles = StyleSheet.create({
 		lineHeight: 20,
 	},
 
-	/* ─── Aspect chip ─── */
+	/* ─── Aspect chip(s) ─── */
+	aspectChipRow: {
+		flexDirection: 'row',
+		flexWrap: 'wrap',
+		gap: 6,
+		marginTop: spacing.sm,
+	},
 	aspectChip: {
 		flexDirection: 'row',
 		alignItems: 'center',
 		alignSelf: 'flex-start',
 		gap: 5,
 		maxWidth: '100%',
-		marginTop: spacing.sm,
 		paddingVertical: 4,
 		paddingHorizontal: spacing.sm,
 		borderRadius: borderRadius.full,

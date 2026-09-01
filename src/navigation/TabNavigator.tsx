@@ -8,7 +8,7 @@ import { FloatingTabBar } from './FloatingTabBar';
 
 import DashboardScreen from '../screens/DashboardScreen';
 import MissionsStack from './MissionsStack';
-import GoalsScreen from '../screens/GoalsScreen';
+import GoalsStack from './GoalsStack';
 import AnalyticsScreen from '../screens/analytics/AnalyticsScreen';
 import ProfileStack from './ProfileStack';
 
@@ -61,7 +61,7 @@ const TabNavigator = () => {
       />
       <Tab.Screen
         name="Goals"
-        component={GoalsScreen}
+        component={GoalsStack}
         options={{
           title: 'Goals',
         }}

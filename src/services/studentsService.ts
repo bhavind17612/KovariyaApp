@@ -21,6 +21,7 @@ interface StudentApiRow {
   admission_no: string | null;
   avatar_url: string | null;
   is_active: boolean;
+  verification_status?: 'pending_verification' | 'verified' | null;
 }
 
 /** Compute age from an ISO date-of-birth string. Returns 0 when unavailable. */
@@ -94,6 +95,7 @@ function toChild(row: StudentApiRow): Child {
     schoolId: row.school_id != null ? String(row.school_id) : undefined,
     admissionNumber: row.admission_no ?? undefined,
     status: row.is_active ? 'active' : 'inactive',
+    verificationStatus: row.verification_status ?? undefined,
   };
 }
 

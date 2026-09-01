@@ -11,6 +11,7 @@ import { colors, spacing, textStyles, borderRadius } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { useChildren } from '../context/ChildrenContext';
 import { useConfirmDialog } from '../context/ConfirmDialogContext';
+import { useAnnouncementsBadge } from '../context/AnnouncementsContext';
 
 const MENU_ITEMS = [
   {
@@ -40,6 +41,7 @@ export function AppDrawerContent(props: DrawerContentComponentProps) {
   const displayName = rawFirst.length > 50 ? `${rawFirst.slice(0, 50)}…` : rawFirst;
   const { children, selectedChildId, openChildPicker } = useChildren();
   const { showConfirm } = useConfirmDialog();
+  const { hasUnread, refreshUnread } = useAnnouncementsBadge();
   const selectedChild = useMemo(
     () => children.find((c) => c.id === selectedChildId) ?? children[0] ?? null,
     [children, selectedChildId]
@@ -52,6 +54,13 @@ export function AppDrawerContent(props: DrawerContentComponentProps) {
     },
     [navigation]
   );
+
+  // Drawer content mounts once and stays alive, so refresh on mount to catch
+  // anything published since the app opened; the poll in AnnouncementsProvider
+  // keeps it fresh afterwards.
+  React.useEffect(() => {
+    refreshUnread();
+  }, [refreshUnread]);
 
   const confirmSignOut = useCallback(() => {
     navigation.closeDrawer();
@@ -145,6 +154,9 @@ export function AppDrawerContent(props: DrawerContentComponentProps) {
             >
               <View style={styles.menuIconOrb}>
                 <Icon name={item.icon} size={22} color={colors.surface} />
+                {item.key === 'announcements' && hasUnread ? (
+                  <View style={styles.unreadDot} />
+                ) : null}
               </View>
               <Text style={styles.menuLabel}>{item.label}</Text>
               <Icon name="chevron-right" size={22} color="rgba(255,255,255,0.7)" />
@@ -379,6 +391,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.35)',
+  },
+  unreadDot: {
+    position: 'absolute',
+    top: -1,
+    right: -1,
+    width: 11,
+    height: 11,
+    borderRadius: 6,
+    backgroundColor: colors.error,
+    borderWidth: 2,
+    borderColor: colors.primary,
   },
   menuLabel: {
     ...textStyles.bodyLarge,

@@ -36,20 +36,37 @@ function completionHistoryFromTimeline(
     }));
 }
 
+/** The stats block GET /api/v1/missions nests progress under — not a flat field. */
+interface ApiMissionProgress {
+  totalDays?: number;
+  participantCount?: number;
+  avgCompletedDays?: number;
+  avgProgressPercent?: number;
+}
+
+type RawMentorMission = MentorMission & { progress?: ApiMissionProgress | null };
+
 /**
  * Ensures fields the UI relies on are never undefined.
  * The API may omit `completionHistory` (it sends `timeline` instead),
  * which would crash callers like getDailyStatusForToday().
  */
-function normalizeMission(m: MentorMission): MentorMission {
+function normalizeMission(m: RawMentorMission): MentorMission {
   const timeline = Array.isArray(m.timeline) ? m.timeline : [];
   const history = Array.isArray(m.completionHistory) ? m.completionHistory : [];
+  // The API sends progress nested as `progress.avgProgressPercent`, not a flat
+  // `progressPercent` field — that mismatch was why every mission showed 0%
+  // regardless of logged points. Flat field kept as a fallback in case a future
+  // response shape sends it directly.
+  const progressPercent =
+    typeof m.progressPercent === 'number'
+      ? m.progressPercent
+      : typeof m.progress?.avgProgressPercent === 'number'
+        ? m.progress.avgProgressPercent
+        : 0;
   return {
     ...m,
-    // The API does not send progressPercent yet. Keeping it numeric stops the
-    // detail screen rendering "undefined%" and stops `undefined >= 100` from
-    // silently reporting every mission as incomplete.
-    progressPercent: typeof m.progressPercent === 'number' ? m.progressPercent : 0,
+    progressPercent,
     rewardBadge: m.rewardBadge ?? null,
     timeline,
     completionHistory: history.length > 0 ? history : completionHistoryFromTimeline(timeline),
@@ -59,7 +76,7 @@ function normalizeMission(m: MentorMission): MentorMission {
 
 class MissionsService {
   async getMissions(): Promise<MentorMission[]> {
-    const response = await api.get<MentorMission[]>(ENDPOINTS.MISSIONS.LIST);
+    const response = await api.get<RawMentorMission[]>(ENDPOINTS.MISSIONS.LIST);
     const list = Array.isArray(response.data.data) ? response.data.data : [];
     return list.map(normalizeMission);
   }
