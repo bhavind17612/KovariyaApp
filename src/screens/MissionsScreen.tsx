@@ -35,6 +35,8 @@ import {
 } from '../data/mentorMissions';
 import { formatAppDate } from '../utils/dateFormat';
 import { missionsService } from '../services/missionsService';
+import { useChildren } from '../context/ChildrenContext';
+import { blockIfUnverified } from '../utils/verificationGuard';
 
 type Props = {
 	navigation: {
@@ -62,13 +64,23 @@ export default function MissionsScreen({ navigation }: Props) {
 		}, [])
 	);
 	const insets = useSafeAreaInsets();
+	const { children, selectedChildId } = useChildren();
+	const selectedChild = useMemo(
+		() => children.find((c) => c.id === selectedChildId) ?? children[0] ?? null,
+		[children, selectedChildId]
+	);
 	const [missionState, setMissionState] = useState<Record<string, MentorMission>>({});
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(false);
 
 	const loadMissions = useCallback(async () => {
+		if (!selectedChildId) {
+			setMissionState({});
+			setLoading(false);
+			return;
+		}
 		try {
-			const missions = await missionsService.getMissions();
+			const missions = await missionsService.getMissions(selectedChildId);
 			setMissionState(Object.fromEntries(missions.map((m) => [m.id, m])));
 			setError(false);
 		} catch {
@@ -76,9 +88,10 @@ export default function MissionsScreen({ navigation }: Props) {
 		} finally {
 			setLoading(false);
 		}
-	}, []);
+	}, [selectedChildId]);
 
 	useEffect(() => {
+		setLoading(true);
 		loadMissions();
 	}, [loadMissions]);
 
@@ -102,6 +115,7 @@ export default function MissionsScreen({ navigation }: Props) {
 
 	const markDone = useCallback(
 		(mission: MentorMission) => {
+			if (blockIfUnverified(selectedChild)) return;
 			const today = getTodayIsoDate();
 			setMissionState((prev) => {
 				const current = prev[mission.id];
@@ -123,11 +137,12 @@ export default function MissionsScreen({ navigation }: Props) {
 				message: `${mission.title}: marked Done Today`,
 			});
 		},
-		[showToast]
+		[showToast, selectedChild]
 	);
 
 	const markMissed = useCallback(
 		(mission: MentorMission) => {
+			if (blockIfUnverified(selectedChild)) return;
 			const today = getTodayIsoDate();
 			setMissionState((prev) => {
 				const current = prev[mission.id];
@@ -149,7 +164,7 @@ export default function MissionsScreen({ navigation }: Props) {
 				message: `${mission.title}: marked Missed Today`,
 			});
 		},
-		[showToast]
+		[showToast, selectedChild]
 	);
 
 	const openDetails = useCallback(
@@ -172,13 +187,7 @@ export default function MissionsScreen({ navigation }: Props) {
 						onPress={() => {
 							setLoading(true);
 							setError(false);
-							missionsService.getMissions()
-								.then((m) => {
-									setMissionState(Object.fromEntries(m.map((x) => [x.id, x])));
-									setError(false);
-								})
-								.catch(() => setError(true))
-								.finally(() => setLoading(false));
+							loadMissions();
 						}}
 						style={({ pressed }) => [styles.retryBtn, pressed && styles.retryBtnPressed]}
 					>

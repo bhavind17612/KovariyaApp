@@ -2,6 +2,7 @@ export { default as BSIGaugeCard } from './BSIGaugeCard';
 export { default as SupportGauges } from './SupportGauges';
 export { default as AspectScoreGrid } from './AspectScoreGrid';
 export { default as HeatmapCalendar } from './HeatmapCalendar';
+export { default as MonthYearPickerModal } from './MonthYearPickerModal';
 export { default as ProgressTrendsChart } from './ProgressTrendsChart';
 export { default as SummaryStats } from './SummaryStats';
 export { default as InsightsSection } from './InsightsSection';

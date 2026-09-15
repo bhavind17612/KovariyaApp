@@ -28,6 +28,9 @@ export const STORAGE_KEYS = {
 
   /** Cached Rating Sheet translations keyed by language_id — avoids re-fetching on every open */
   RATING_SHEET_TRANSLATIONS: '@kovariya_rating_sheet_translations',
+
+  /** Android SAF directory URI the user granted for saving downloaded reports (re-used across downloads). */
+  ANDROID_DOWNLOAD_DIR_URI: '@kovariya_android_download_dir_uri',
 } as const;
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];

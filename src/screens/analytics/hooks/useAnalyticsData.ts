@@ -11,12 +11,9 @@ import type { TrendPoint } from '../../../types/progressTrends';
 import type { SummaryStatsData } from '../../../types/summaryStats';
 import {
 	getSdsAnalytics,
-	getGoalWiseReport,
-	getMonthlyPdfReport,
 	type GuidanceItem,
 	type BadgeItem,
 	type StrengthWeakness,
-	type SummaryPeriod,
 } from '../../../data/analyticsData';
 
 /** Empty strengths/weaknesses used before the API responds. */
@@ -53,51 +50,40 @@ export function useAnalyticsData() {
 			.catch(() => {});
 	}, []);
 
-	/* ── Heatmap state ── */
-	const now = new Date();
-	// Stable initialiser — runs once
-	const [heatmapYear, setHeatmapYear] = useState(
-		() => new Date().getFullYear()
-	);
-	const [heatmapMonth, setHeatmapMonth] = useState(
-		() => new Date().getMonth()
-	);
-
-	const monthlyReport = useMemo(
-		() => getMonthlyPdfReport(selectedChild.id, heatmapYear, heatmapMonth),
-		[selectedChild.id, heatmapYear, heatmapMonth]
-	);
-	const goalWiseReport = useMemo(
-		() => getGoalWiseReport(selectedChild.id),
-		[selectedChild.id]
-	);
+	/*
+	 * ── Global selected month (0-based month) ──
+	 * Single source of truth for the whole screen — every card below (BSI,
+	 * aspect scores, progress trends, summary stats, heatmap) is scoped to
+	 * this one month, driven by the month/year picker in AnalyticsScreen.
+	 */
+	const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
+	const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth());
 
 	const prevMonth = useCallback(() => {
-		if (heatmapMonth === 0) {
-			setHeatmapYear((y) => y - 1);
-			setHeatmapMonth(11);
+		if (selectedMonth === 0) {
+			setSelectedYear((y) => y - 1);
+			setSelectedMonth(11);
 		} else {
-			setHeatmapMonth((m) => m - 1);
+			setSelectedMonth((m) => m - 1);
 		}
-	}, [heatmapMonth]);
+	}, [selectedMonth]);
 
 	const nextMonth = useCallback(() => {
-		if (heatmapMonth === 11) {
-			setHeatmapYear((y) => y + 1);
-			setHeatmapMonth(0);
+		if (selectedMonth === 11) {
+			setSelectedYear((y) => y + 1);
+			setSelectedMonth(0);
 		} else {
-			setHeatmapMonth((m) => m + 1);
+			setSelectedMonth((m) => m + 1);
 		}
-	}, [heatmapMonth]);
+	}, [selectedMonth]);
 
-	/** Jumps the heatmap directly to an arbitrary year/month (0-based). */
+	/** Jumps directly to an arbitrary year/month (0-based) — used by the month/year picker. */
 	const setHeatmapPeriod = useCallback((y: number, m: number) => {
-		setHeatmapYear(y);
-		setHeatmapMonth(m);
+		setSelectedYear(y);
+		setSelectedMonth(m);
 	}, []);
 
 	/* ── BSI (live API) ── */
-	const [bsiPeriod, setBsiPeriod] = useState<'weekly' | 'monthly'>('weekly');
 	const [studentBsi, setStudentBsi] = useState<StudentBsi | null>(null);
 	const [bsiLoading, setBsiLoading] = useState(true);
 	const [bsiError, setBsiError] = useState(false);
@@ -110,8 +96,9 @@ export function useAnalyticsData() {
 			return Promise.resolve();
 		}
 		setBsiLoading(true);
+		// API month is 1-based; selectedMonth is 0-based.
 		return analyticsService
-			.getStudentBsi(studentUuid, bsiPeriod)
+			.getStudentBsi(studentUuid, selectedYear, selectedMonth + 1)
 			.then((data) => {
 				setStudentBsi(data);
 				setBsiError(false);
@@ -121,7 +108,7 @@ export function useAnalyticsData() {
 				setBsiError(true);
 			})
 			.finally(() => setBsiLoading(false));
-	}, [selectedChild?.id, bsiPeriod]);
+	}, [selectedChild?.id, selectedYear, selectedMonth]);
 
 	useEffect(() => {
 		fetchBsi();
@@ -158,7 +145,6 @@ export function useAnalyticsData() {
 	}, [fetchScoreCards]);
 
 	/* ── Aspect scores (live API) ── */
-	const [aspectPeriod, setAspectPeriod] = useState<'weekly' | 'monthly'>('weekly');
 	const [aspects, setAspects] = useState<AspectScore[]>([]);
 	const [aspectsLoading, setAspectsLoading] = useState(true);
 	const [aspectsError, setAspectsError] = useState(false);
@@ -172,7 +158,7 @@ export function useAnalyticsData() {
 		}
 		setAspectsLoading(true);
 		return analyticsService
-			.getAspectScores(studentUuid, aspectPeriod)
+			.getAspectScores(studentUuid, selectedYear, selectedMonth + 1)
 			.then((data) => {
 				setAspects(data);
 				setAspectsError(false);
@@ -182,7 +168,7 @@ export function useAnalyticsData() {
 				setAspectsError(true);
 			})
 			.finally(() => setAspectsLoading(false));
-	}, [selectedChild?.id, aspectPeriod]);
+	}, [selectedChild?.id, selectedYear, selectedMonth]);
 
 	useEffect(() => {
 		fetchAspects();
@@ -201,9 +187,9 @@ export function useAnalyticsData() {
 			return Promise.resolve();
 		}
 		setHeatmapLoading(true);
-		// API month is 1-based; heatmapMonth is 0-based.
+		// API month is 1-based; selectedMonth is 0-based.
 		return analyticsService
-			.getDbsHeatmap(studentUuid, heatmapYear, heatmapMonth + 1)
+			.getDbsHeatmap(studentUuid, selectedYear, selectedMonth + 1)
 			.then((days) => {
 				setHeatmapData(days);
 				setHeatmapError(false);
@@ -213,14 +199,13 @@ export function useAnalyticsData() {
 				setHeatmapError(true);
 			})
 			.finally(() => setHeatmapLoading(false));
-	}, [selectedChild?.id, heatmapYear, heatmapMonth]);
+	}, [selectedChild?.id, selectedYear, selectedMonth]);
 
 	useEffect(() => {
 		fetchHeatmap();
 	}, [fetchHeatmap]);
 
 	/* ── Progress trends (live API) ── */
-	const [trendPeriod, setTrendPeriod] = useState<'weekly' | 'monthly'>('weekly');
 	const [trends, setTrends] = useState<TrendPoint[]>([]);
 	const [trendsLoading, setTrendsLoading] = useState(true);
 	const [trendsError, setTrendsError] = useState(false);
@@ -234,7 +219,7 @@ export function useAnalyticsData() {
 		}
 		setTrendsLoading(true);
 		return analyticsService
-			.getProgressTrends(studentUuid, trendPeriod)
+			.getProgressTrends(studentUuid, selectedYear, selectedMonth + 1)
 			.then((points) => {
 				setTrends(points);
 				setTrendsError(false);
@@ -244,14 +229,13 @@ export function useAnalyticsData() {
 				setTrendsError(true);
 			})
 			.finally(() => setTrendsLoading(false));
-	}, [selectedChild?.id, trendPeriod]);
+	}, [selectedChild?.id, selectedYear, selectedMonth]);
 
 	useEffect(() => {
 		fetchTrends();
 	}, [fetchTrends]);
 
 	/* ── Summary stats (live API) ── */
-	const [summaryPeriod, setSummaryPeriod] = useState<SummaryPeriod>('weekly');
 	const [counters, setCounters] = useState<SummaryStatsData | null>(null);
 	const [countersLoading, setCountersLoading] = useState(true);
 	const [countersError, setCountersError] = useState(false);
@@ -265,7 +249,7 @@ export function useAnalyticsData() {
 		}
 		setCountersLoading(true);
 		return analyticsService
-			.getSummaryStats(studentUuid, summaryPeriod)
+			.getSummaryStats(studentUuid, selectedYear, selectedMonth + 1)
 			.then((data) => {
 				setCounters(data);
 				setCountersError(false);
@@ -275,7 +259,7 @@ export function useAnalyticsData() {
 				setCountersError(true);
 			})
 			.finally(() => setCountersLoading(false));
-	}, [selectedChild?.id, summaryPeriod]);
+	}, [selectedChild?.id, selectedYear, selectedMonth]);
 
 	useEffect(() => {
 		fetchSummaryStats();
@@ -341,13 +325,9 @@ export function useAnalyticsData() {
 		aspects,
 		aspectsLoading,
 		aspectsError,
-		aspectPeriod,
-		setAspectPeriod,
 		trends,
 		trendsLoading,
 		trendsError,
-		trendPeriod,
-		setTrendPeriod,
 		counters,
 		countersLoading,
 		countersError,
@@ -356,20 +336,15 @@ export function useAnalyticsData() {
 		strengthsWeaknesses,
 		insightsLoading,
 		insightsError,
-		monthlyReport,
-		goalWiseReport,
 		heatmapData,
 		heatmapLoading,
 		heatmapError,
-		heatmapYear,
-		heatmapMonth,
+		// Global month selector — drives every card on the screen.
+		selectedYear,
+		selectedMonth,
 		prevMonth,
 		nextMonth,
-		setHeatmapPeriod,
-		summaryPeriod,
-		setSummaryPeriod,
-		bsiPeriod,
-		setBsiPeriod,
+		setSelectedMonth: setHeatmapPeriod,
 		studentBsi,
 		bsiLoading,
 		bsiError,

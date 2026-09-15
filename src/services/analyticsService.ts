@@ -1,6 +1,6 @@
 import { api } from '../api';
 import { ENDPOINTS } from '../api/endpoints';
-import type { ApiStudentBsi, BsiPeriod, StudentBsi } from '../types/bsi';
+import type { ApiStudentBsi, StudentBsi } from '../types/bsi';
 import type { ApiScoreCards, ScoreCards } from '../types/scoreCards';
 import type { ApiAspectScores, AspectScore } from '../types/aspectScore';
 import type { ApiDbsHeatmap, HeatmapDay } from '../types/heatmap';
@@ -27,6 +27,22 @@ function mapAspectScore(raw: ApiAspectScores['aspects'][number]): AspectScore {
 export interface BsiSnapshot {
   percent: number;
   trend: number;
+}
+
+export type ReportPeriod = 'weekly' | 'monthly';
+
+/** Raw payload from GET /api/v1/analytics/parent/report/download. */
+interface ApiReportDownload {
+  report_url: string;
+  file_name?: string | null;
+  period?: ReportPeriod;
+  generated_at?: string;
+}
+
+/** Where to download the generated report PDF from. */
+export interface ReportDownload {
+  url: string;
+  fileName: string;
 }
 
 function mapStudentBsi(raw: ApiStudentBsi): StudentBsi {
@@ -65,10 +81,10 @@ class AnalyticsService {
     return res.data.data?.dbs ?? null;
   }
 
-  /** Behaviour Score Index for a student over a weekly/monthly window. */
-  async getStudentBsi(studentUuid: string, period: BsiPeriod): Promise<StudentBsi | null> {
+  /** Behaviour Score Index for a student over a specific calendar month (1-based month). */
+  async getStudentBsi(studentUuid: string, year: number, month: number): Promise<StudentBsi | null> {
     const res = await api.get<ApiStudentBsi | null>(ENDPOINTS.STUDENTS.BSI(studentUuid), {
-      params: { period },
+      params: { period: 'monthly', year, month },
     });
     const data = res.data.data;
     return data ? mapStudentBsi(data) : null;
@@ -82,11 +98,11 @@ class AnalyticsService {
     return res.data.data ?? null;
   }
 
-  /** Per-aspect behaviour scores + trend for a student, weekly or monthly. */
-  async getAspectScores(studentUuid: string, period: BsiPeriod): Promise<AspectScore[]> {
+  /** Per-aspect behaviour scores + trend for a student over a specific calendar month (1-based month). */
+  async getAspectScores(studentUuid: string, year: number, month: number): Promise<AspectScore[]> {
     const res = await api.get<ApiAspectScores | null>(
       ENDPOINTS.STUDENTS.ASPECT_SCORES(studentUuid),
-      { params: { period } },
+      { params: { period: 'monthly', year, month } },
     );
     const aspects = res.data.data?.aspects;
     return Array.isArray(aspects) ? aspects.map(mapAspectScore) : [];
@@ -105,11 +121,11 @@ class AnalyticsService {
     return Array.isArray(days) ? days : [];
   }
 
-  /** BSI vs Parent Consistency trend series for a student, weekly or monthly. */
-  async getProgressTrends(studentUuid: string, period: BsiPeriod): Promise<TrendPoint[]> {
+  /** BSI vs Parent Consistency trend series for a student over a specific calendar month (1-based month). */
+  async getProgressTrends(studentUuid: string, year: number, month: number): Promise<TrendPoint[]> {
     const res = await api.get<ApiProgressTrends | null>(
       ENDPOINTS.STUDENTS.PROGRESS_TRENDS(studentUuid),
-      { params: { period } },
+      { params: { period: 'monthly', year, month } },
     );
     const points = res.data.data?.points;
     return Array.isArray(points)
@@ -121,11 +137,11 @@ class AnalyticsService {
       : [];
   }
 
-  /** Activity-snapshot counters for a student, weekly or monthly. */
-  async getSummaryStats(studentUuid: string, period: BsiPeriod): Promise<SummaryStatsData | null> {
+  /** Activity-snapshot counters for a student over a specific calendar month (1-based month). */
+  async getSummaryStats(studentUuid: string, year: number, month: number): Promise<SummaryStatsData | null> {
     const res = await api.get<ApiSummaryStats | null>(
       ENDPOINTS.STUDENTS.SUMMARY_STATS(studentUuid),
-      { params: { period } },
+      { params: { period: 'monthly', year, month } },
     );
     const data = res.data.data;
     if (!data) return null;
@@ -134,6 +150,29 @@ class AnalyticsService {
       activeDays: data.activeDays,
       totalEntries: data.totalEntries,
       streak: data.streak,
+    };
+  }
+
+  /**
+   * Requests a generated PDF report for a child and returns where to download it from.
+   * The server renders the PDF on demand — the URL is expected to be reachable
+   * without extra auth (e.g. a signed/expiring link) since it's handed straight
+   * to the OS downloader.
+   */
+  async downloadReport(
+    studentUuid: string,
+    period: ReportPeriod
+  ): Promise<ReportDownload> {
+    const res = await api.get<ApiReportDownload>(ENDPOINTS.ANALYTICS.REPORT_DOWNLOAD, {
+      params: { student_id: studentUuid, period },
+    });
+    const data = res.data.data;
+    if (!data?.report_url) {
+      throw new Error('Report URL missing from response');
+    }
+    return {
+      url: data.report_url,
+      fileName: data.file_name || `${period}-report-${Date.now()}.pdf`,
     };
   }
 }

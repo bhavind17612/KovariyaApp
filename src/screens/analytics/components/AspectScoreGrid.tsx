@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
@@ -15,17 +15,14 @@ interface AspectScoreGridProps {
 	aspects: AspectScore[];
 	loading: boolean;
 	error: boolean;
-	period: 'weekly' | 'monthly';
-	onTogglePeriod: (period: 'weekly' | 'monthly') => void;
+	/** e.g. "Sep 2026" — the screen-wide selected month this card's data belongs to. */
+	monthLabel: string;
 }
 
 /* ═══════════════════════════════════════════════════════════════════ */
 /*  Component                                                         */
 /* ═══════════════════════════════════════════════════════════════════ */
-const SectionHeader: React.FC<{
-	period: 'weekly' | 'monthly';
-	onTogglePeriod: (period: 'weekly' | 'monthly') => void;
-}> = ({ period, onTogglePeriod }) => (
+const SectionHeader: React.FC<{ monthLabel: string }> = ({ monthLabel }) => (
 	<View style={s.sectionHeaderRow}>
 		<View style={s.headerLeft}>
 			<View style={s.sectionIconWrap}>
@@ -33,24 +30,8 @@ const SectionHeader: React.FC<{
 			</View>
 			<View>
 				<Text style={s.sectionTitle}>Aspect Scores</Text>
-				<Text style={s.sectionSubtitle}>
-					{period === 'weekly' ? "This week's breakdown" : "This month's breakdown"}
-				</Text>
+				<Text style={s.sectionSubtitle}>{monthLabel}'s breakdown</Text>
 			</View>
-		</View>
-		<View style={s.toggle}>
-			<Pressable
-				onPress={() => onTogglePeriod('weekly')}
-				style={[s.toggleBtn, period === 'weekly' && s.toggleBtnActive]}
-			>
-				<Text style={[s.toggleText, period === 'weekly' && s.toggleTextActive]}>Weekly</Text>
-			</Pressable>
-			<Pressable
-				onPress={() => onTogglePeriod('monthly')}
-				style={[s.toggleBtn, period === 'monthly' && s.toggleBtnActive]}
-			>
-				<Text style={[s.toggleText, period === 'monthly' && s.toggleTextActive]}>Monthly</Text>
-			</Pressable>
 		</View>
 	</View>
 );
@@ -59,8 +40,7 @@ const AspectScoreGrid: React.FC<AspectScoreGridProps> = ({
 	aspects,
 	loading,
 	error,
-	period,
-	onTogglePeriod,
+	monthLabel,
 }) => {
 	const row1 = aspects.slice(0, 3);
 	const row2 = aspects.slice(3, 5);
@@ -71,7 +51,7 @@ const AspectScoreGrid: React.FC<AspectScoreGridProps> = ({
 			style={[s.shadowWrapper, { marginBottom: spacing.sm }]}
 		>
 			<View style={s.sectionWrap}>
-				<SectionHeader period={period} onTogglePeriod={onTogglePeriod} />
+				<SectionHeader monthLabel={monthLabel} />
 
 				{loading && aspects.length === 0 ? (
 					<AspectGridSkeleton />
@@ -91,7 +71,7 @@ const AspectScoreGrid: React.FC<AspectScoreGridProps> = ({
 							{row1.map((aspect, idx) => (
 								<View key={aspect.id} style={s.aspectCol}>
 									{idx > 0 && <View style={s.colDivider} />}
-									<AspectTile aspect={aspect} animDelay={idx * 80} />
+									<AspectTile aspect={aspect} animDelay={idx * 80} monthLabel={monthLabel} />
 								</View>
 							))}
 						</View>
@@ -105,7 +85,7 @@ const AspectScoreGrid: React.FC<AspectScoreGridProps> = ({
 								{row2.map((aspect, idx) => (
 									<View key={aspect.id} style={s.aspectCol}>
 										{idx > 0 && <View style={s.colDivider} />}
-										<AspectTile aspect={aspect} animDelay={idx * 80} />
+										<AspectTile aspect={aspect} animDelay={idx * 80} monthLabel={monthLabel} />
 									</View>
 								))}
 								<View style={s.aspectCol}>
@@ -162,11 +142,13 @@ export default React.memo(AspectScoreGrid);
 interface AspectTileProps {
 	aspect: AspectScore;
 	animDelay: number;
+	monthLabel: string;
 }
 
 const AspectTile: React.FC<AspectTileProps> = React.memo(({
 	aspect,
 	animDelay,
+	monthLabel,
 }) => {
 	const trendColor = aspect.change >= 0 ? colors.growth : colors.error;
 
@@ -204,7 +186,7 @@ const AspectTile: React.FC<AspectTileProps> = React.memo(({
 
 				{/* Trend indicator */}
 				<View style={[s.aspectTrendPill, { backgroundColor: `${trendColor}14` }]}>
-					<Text style={[s.aspectTrendText, { color: trendColor }]}>This Week</Text>
+					<Text style={[s.aspectTrendText, { color: trendColor }]}>{monthLabel}</Text>
 					<Icon
 						name={aspect.change >= 0 ? 'trending-up' : 'trending-down'}
 						size={12}
@@ -284,43 +266,6 @@ const s = StyleSheet.create({
 		...textStyles.caption,
 		color: colors.textSecondary,
 		marginTop: 2,
-	},
-
-	/* Toggle */
-	toggle: {
-		flexDirection: 'row',
-		backgroundColor: colors.surfaceMuted,
-		borderRadius: borderRadius.full,
-		padding: 2,
-		borderWidth: StyleSheet.hairlineWidth,
-		borderColor: colors.border,
-	},
-	toggleBtn: {
-		paddingHorizontal: spacing.sm,
-		paddingVertical: 5,
-		borderRadius: borderRadius.full,
-	},
-	toggleBtnActive: {
-		backgroundColor: colors.surface,
-		...Platform.select({
-			ios: {
-				shadowColor: colors.ink,
-				shadowOffset: { width: 0, height: 1 },
-				shadowOpacity: 0.08,
-				shadowRadius: 4,
-			},
-			android: { elevation: 2 },
-			default: {},
-		}),
-	},
-	toggleText: {
-		fontSize: 11,
-		fontWeight: '700',
-		color: colors.textMuted,
-		letterSpacing: 0.2,
-	},
-	toggleTextActive: {
-		color: colors.primary,
 	},
 
 	/* Grid */

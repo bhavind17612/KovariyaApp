@@ -3,7 +3,6 @@ import {
 	View,
 	Text,
 	StyleSheet,
-	Pressable,
 	TouchableOpacity,
 	Platform,
 } from 'react-native';
@@ -25,8 +24,8 @@ interface BSIGaugeCardProps {
 	loading: boolean;
 	error: boolean;
 	childName: string;
-	bsiPeriod: 'weekly' | 'monthly';
-	onTogglePeriod: (period: 'weekly' | 'monthly') => void;
+	/** e.g. "Sep 2026" — the screen-wide selected month this card's data belongs to. */
+	monthLabel: string;
 }
 
 /** "2026-06-08" → "Jun 8". Falls back to the raw value. */
@@ -41,27 +40,9 @@ function formatDay(iso: string): string {
 /* ═══════════════════════════════════════════════════════════════════ */
 /*  Component                                                         */
 /* ═══════════════════════════════════════════════════════════════════ */
-const PeriodToggle: React.FC<{
-	bsiPeriod: 'weekly' | 'monthly';
-	onTogglePeriod: (period: 'weekly' | 'monthly') => void;
-}> = ({ bsiPeriod, onTogglePeriod }) => (
-	<View style={s.bsiToggle}>
-		<Pressable
-			onPress={() => onTogglePeriod('weekly')}
-			style={[s.bsiToggleBtn, bsiPeriod === 'weekly' && s.bsiToggleBtnActive]}
-		>
-			<Text style={[s.bsiToggleText, bsiPeriod === 'weekly' && s.bsiToggleTextActive]}>
-				Weekly
-			</Text>
-		</Pressable>
-		<Pressable
-			onPress={() => onTogglePeriod('monthly')}
-			style={[s.bsiToggleBtn, bsiPeriod === 'monthly' && s.bsiToggleBtnActive]}
-		>
-			<Text style={[s.bsiToggleText, bsiPeriod === 'monthly' && s.bsiToggleTextActive]}>
-				Monthly
-			</Text>
-		</Pressable>
+const MonthPill: React.FC<{ monthLabel: string }> = ({ monthLabel }) => (
+	<View style={s.monthPill}>
+		<Text style={s.monthPillText}>{monthLabel}</Text>
 	</View>
 );
 
@@ -70,12 +51,10 @@ const BSIGaugeCard: React.FC<BSIGaugeCardProps> = ({
 	loading,
 	error,
 	childName,
-	bsiPeriod,
-	onTogglePeriod,
+	monthLabel,
 }) => {
 	const percent = data ? Math.max(0, Math.round(data.bsi)) : 0;
 	const bsiColor = scoreColor(percent);
-	const periodLabel = bsiPeriod === 'weekly' ? 'This Week' : 'This Month';
 
 	// Direction → trend icon. Prefer the server's `direction`, fall back to change sign.
 	const trendIcon = React.useMemo(() => {
@@ -133,7 +112,7 @@ const BSIGaugeCard: React.FC<BSIGaugeCardProps> = ({
 				<View style={[s.bsiCard, s.emptyCard]}>
 					<View style={s.bsiHeaderRow}>
 						<Text style={s.bsiTitle}>Behaviour Score Index (BSI)</Text>
-						<PeriodToggle bsiPeriod={bsiPeriod} onTogglePeriod={onTogglePeriod} />
+						<MonthPill monthLabel={monthLabel} />
 					</View>
 					<View style={s.emptyBody}>
 						<Icon
@@ -144,7 +123,7 @@ const BSIGaugeCard: React.FC<BSIGaugeCardProps> = ({
 						<Text style={s.emptyText}>
 							{error
 								? 'Could not load the BSI score. Pull to refresh.'
-								: `No ${bsiPeriod} BSI data yet for ${childName}.`}
+								: `No BSI data yet for ${childName} in ${monthLabel}.`}
 						</Text>
 					</View>
 				</View>
@@ -168,7 +147,7 @@ const BSIGaugeCard: React.FC<BSIGaugeCardProps> = ({
 						<View style={s.bsiTitleRow}>
 							<Text style={s.bsiTitle}>Behaviour Score Index (BSI)</Text>
 						</View>
-						<PeriodToggle bsiPeriod={bsiPeriod} onTogglePeriod={onTogglePeriod} />
+						<MonthPill monthLabel={monthLabel} />
 					</View>
 
 					{/* Period range */}
@@ -208,7 +187,7 @@ const BSIGaugeCard: React.FC<BSIGaugeCardProps> = ({
 					{/* Bottom info */}
 					<View style={s.bsiBottomRow}>
 						<View style={[s.bsiTrendPill, { backgroundColor: scoreBg(percent) }]}>
-							<Text style={[s.bsiTrendText, { color: bsiColor }]}>{periodLabel}</Text>
+							<Text style={[s.bsiTrendText, { color: bsiColor }]}>{monthLabel}</Text>
 							<Icon name={trendIcon} size={14} color={bsiColor} />
 							<Text style={[s.bsiTrendText, { color: bsiColor }]}>
 								{data.change > 0 ? `+${data.change}` : data.change}%
@@ -328,40 +307,17 @@ const s = StyleSheet.create({
 		letterSpacing: 0.6,
 		fontSize: 11,
 	},
-	bsiToggle: {
-		flexDirection: 'row',
-		backgroundColor: colors.surfaceMuted,
+	monthPill: {
+		backgroundColor: colors.lavenderSoft,
 		borderRadius: borderRadius.full,
-		padding: 2,
-		borderWidth: StyleSheet.hairlineWidth,
-		borderColor: colors.border,
-	},
-	bsiToggleBtn: {
 		paddingHorizontal: spacing.sm,
 		paddingVertical: 5,
-		borderRadius: borderRadius.full,
 	},
-	bsiToggleBtnActive: {
-		backgroundColor: colors.surface,
-		...Platform.select({
-			ios: {
-				shadowColor: colors.primary,
-				shadowOffset: { width: 0, height: 1 },
-				shadowOpacity: 0.12,
-				shadowRadius: 4,
-			},
-			android: { elevation: 2 },
-			default: {},
-		}),
-	},
-	bsiToggleText: {
+	monthPillText: {
 		fontSize: 11,
 		fontWeight: '700',
-		color: colors.textMuted,
-		letterSpacing: 0.2,
-	},
-	bsiToggleTextActive: {
 		color: colors.primary,
+		letterSpacing: 0.2,
 	},
 	bsiGaugeWrap: {
 		alignItems: 'center',

@@ -71,6 +71,8 @@ export const ENDPOINTS = {
     LIST: '/api/v1/missions',
     DETAIL: (id: string) => `/api/v1/missions/${id}`,
     SUBMIT: '/api/v1/missions/submit',
+    /** GET ?student_id=<uuid> — every mission assigned to a child */
+    PARENT_LIST: '/api/v1/missions/parent/list',
     /** GET ?student_id=<uuid> — today's active mission + today's log status */
     TODAY: '/api/v1/missions/parent/today',
     /** POST (multipart) — log a mission for a child for a given day */
@@ -109,6 +111,8 @@ export const ENDPOINTS = {
     SCORE_CARDS: '/api/v1/analytics/parent/score-cards',
     /** GET ?language=<code> — AI guidance, strengths/weaknesses & badges for a child */
     INSIGHTS: (studentUuid: string) => `/api/v1/analytics/${studentUuid}/insights`,
+    /** GET ?student_id=<uuid>&period=weekly|monthly — generates a PDF report and returns its download URL */
+    REPORT_DOWNLOAD: '/api/v1/analytics/parent/report/download',
   },
 
   ANNOUNCEMENTS: {

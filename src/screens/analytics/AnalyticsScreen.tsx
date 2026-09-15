@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
 	ScrollView,
 	Platform,
@@ -18,7 +18,9 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { AppGradientHeader, AppRefreshControl } from '../../components';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 import { useToast } from '../../context/ToastContext';
-import type { GoalWiseReport, MonthlyPdfReport } from '../../data/analyticsData';
+import { analyticsService, type ReportPeriod } from '../../services/analyticsService';
+import { downloadAndShareFile } from '../../utils/fileDownload';
+import { getDisplayMessage } from '../../utils/errorParser';
 import {
 	FLOATING_TAB_BAR_VISUAL_HEIGHT,
 	borderRadius,
@@ -34,6 +36,7 @@ import {
 	SupportGauges,
 	AspectScoreGrid,
 	HeatmapCalendar,
+	MonthYearPickerModal,
 	ProgressTrendsChart,
 	SummaryStats,
 	InsightsSection,
@@ -47,7 +50,8 @@ import {
 const AnalyticsScreen: React.FC = () => {
 	const insets = useSafeAreaInsets();
 	const { showToast } = useToast();
-	const [activeReport, setActiveReport] = React.useState<'monthly' | 'goalwise' | null>(null);
+	const [reportPickerVisible, setReportPickerVisible] = useState(false);
+	const [downloadingReport, setDownloadingReport] = useState(false);
 	const [selectedDay, setSelectedDay] = React.useState<{
 		date: string;
 		score: number | null;
@@ -72,33 +76,21 @@ const AnalyticsScreen: React.FC = () => {
 		aspects,
 		aspectsLoading,
 		aspectsError,
-		aspectPeriod,
-		setAspectPeriod,
 		trends,
 		trendsLoading,
 		trendsError,
-		trendPeriod,
-		setTrendPeriod,
 		counters,
 		countersLoading,
 		countersError,
 		guidance,
 		badges,
 		strengthsWeaknesses,
-		monthlyReport,
-		goalWiseReport,
 		heatmapData,
 		heatmapLoading,
 		heatmapError,
-		heatmapYear,
-		heatmapMonth,
-		prevMonth,
-		nextMonth,
-		setHeatmapPeriod,
-		summaryPeriod,
-		setSummaryPeriod,
-		bsiPeriod,
-		setBsiPeriod,
+		selectedYear,
+		selectedMonth,
+		setSelectedMonth,
 		studentBsi,
 		bsiLoading,
 		bsiError,
@@ -109,6 +101,16 @@ const AnalyticsScreen: React.FC = () => {
 	} = useAnalyticsData();
 
 	const { refreshing, onRefresh } = usePullToRefresh(refreshAnalytics);
+
+	const [monthPickerVisible, setMonthPickerVisible] = useState(false);
+	const monthLabel = useMemo(
+		() =>
+			new Date(selectedYear, selectedMonth, 1).toLocaleDateString('en-US', {
+				month: 'short',
+				year: 'numeric',
+			}),
+		[selectedYear, selectedMonth]
+	);
 
 	/* Status bar management */
 	useFocusEffect(
@@ -128,33 +130,63 @@ const AnalyticsScreen: React.FC = () => {
 		}, [])
 	);
 
-	const openMonthlyReport = useCallback(() => {
-		setActiveReport('monthly');
-		showToast({
-			type: 'info',
-			message: `Monthly PDF report is ready for ${selectedChild.name}.`,
-			durationMs: 2400,
-		});
-	}, [selectedChild.name, showToast]);
+	const openReportPicker = useCallback(() => {
+		if (downloadingReport) return;
+		setReportPickerVisible(true);
+	}, [downloadingReport]);
 
-	const openGoalWiseReport = useCallback(() => {
-		setActiveReport('goalwise');
-		showToast({
-			type: 'info',
-			message: `Goal-wise report is ready for ${selectedChild.name}.`,
-			durationMs: 2400,
-		});
-	}, [selectedChild.name, showToast]);
-
-	const closeReport = useCallback(() => {
-		setActiveReport(null);
+	const closeReportPicker = useCallback(() => {
+		setReportPickerVisible(false);
 	}, []);
+
+	const handleDownloadReport = useCallback(
+		async (period: ReportPeriod) => {
+			setReportPickerVisible(false);
+			setDownloadingReport(true);
+			try {
+				const { url, fileName } = await analyticsService.downloadReport(
+					selectedChild.id,
+					period
+				);
+				// Shows its own "Download complete — Open now?" alert, so no success
+				// toast needed here.
+				await downloadAndShareFile(url, fileName);
+			} catch (err) {
+				showToast({ type: 'error', message: getDisplayMessage(err), durationMs: 3000 });
+			} finally {
+				setDownloadingReport(false);
+			}
+		},
+		[selectedChild.id, showToast]
+	);
 
 	return (
 		<SafeAreaView style={s.root} edges={['left', 'right', 'bottom']}>
 			<AppGradientHeader
 				title="Progress & Analytics"
 				subtitle={`${selectedChild.name}'s Insights`}
+			/>
+
+			{/* Global month/year picker — every card below is scoped to this one month */}
+			<View style={monthBarStyles.monthBar}>
+				<Pressable
+					onPress={() => setMonthPickerVisible(true)}
+					style={monthBarStyles.monthBarPill}
+					accessibilityRole="button"
+					accessibilityLabel="Choose month and year"
+				>
+					<Icon name="calendar-month" size={16} color={colors.primary} />
+					<Text style={monthBarStyles.monthBarPillText}>{monthLabel}</Text>
+					<Icon name="arrow-drop-down" size={18} color={colors.primary} />
+				</Pressable>
+			</View>
+
+			<MonthYearPickerModal
+				visible={monthPickerVisible}
+				year={selectedYear}
+				month={selectedMonth}
+				onSelect={setSelectedMonth}
+				onClose={() => setMonthPickerVisible(false)}
 			/>
 
 			<ScrollView
@@ -173,8 +205,7 @@ const AnalyticsScreen: React.FC = () => {
 					loading={bsiLoading}
 					error={bsiError}
 					childName={selectedChild.name}
-					bsiPeriod={bsiPeriod}
-					onTogglePeriod={setBsiPeriod}
+					monthLabel={monthLabel}
 				/>
 
 				{/* 2. Support KPI Gauges (3 semi-circles) */}
@@ -192,8 +223,7 @@ const AnalyticsScreen: React.FC = () => {
 					aspects={aspects}
 					loading={aspectsLoading}
 					error={aspectsError}
-					period={aspectPeriod}
-					onTogglePeriod={setAspectPeriod}
+					monthLabel={monthLabel}
 				/>
 
 				{/* 4. Behaviour Heatmap (DBS Calendar) */}
@@ -201,11 +231,8 @@ const AnalyticsScreen: React.FC = () => {
 					data={heatmapData}
 					loading={heatmapLoading}
 					error={heatmapError}
-					year={heatmapYear}
-					month={heatmapMonth}
-					onPrevMonth={prevMonth}
-					onNextMonth={nextMonth}
-					onSelectMonth={setHeatmapPeriod}
+					year={selectedYear}
+					month={selectedMonth}
 					onDayPress={handleDayPress}
 				/>
 
@@ -217,8 +244,7 @@ const AnalyticsScreen: React.FC = () => {
 					data={trends}
 					loading={trendsLoading}
 					error={trendsError}
-					period={trendPeriod}
-					onTogglePeriod={setTrendPeriod}
+					monthLabel={monthLabel}
 					childName={selectedChild.name}
 				/>
 
@@ -227,8 +253,7 @@ const AnalyticsScreen: React.FC = () => {
 					counters={counters}
 					loading={countersLoading}
 					error={countersError}
-					summaryPeriod={summaryPeriod}
-					onTogglePeriod={setSummaryPeriod}
+					monthLabel={monthLabel}
 				/>
 
 				{/* Section divider */}
@@ -245,17 +270,14 @@ const AnalyticsScreen: React.FC = () => {
 
 			<FABReports
 				bottom={fabBottom}
-				onMonthlyReportPress={openMonthlyReport}
-				onGoalWiseReportPress={openGoalWiseReport}
+				loading={downloadingReport}
+				onPress={openReportPicker}
 			/>
 
-			<ReportPreviewModal
-				visible={activeReport !== null}
-				type={activeReport}
-				childName={selectedChild.name}
-				monthlyReport={monthlyReport}
-				goalReport={goalWiseReport}
-				onClose={closeReport}
+			<ReportPeriodPickerModal
+				visible={reportPickerVisible}
+				onSelect={handleDownloadReport}
+				onClose={closeReportPicker}
 			/>
 
 			<DayLogsSheet
@@ -271,303 +293,171 @@ const AnalyticsScreen: React.FC = () => {
 
 export default AnalyticsScreen;
 
-interface ReportPreviewModalProps {
+/* ═══════════════════════════════════════════════════════════════════ */
+/*  Report period picker — asks weekly/monthly, then the screen calls   */
+/*  the download API directly. Replaces the old in-app report preview.  */
+/* ═══════════════════════════════════════════════════════════════════ */
+interface ReportPeriodPickerModalProps {
 	visible: boolean;
-	type: 'monthly' | 'goalwise' | null;
-	childName: string;
-	monthlyReport: MonthlyPdfReport;
-	goalReport: GoalWiseReport;
+	onSelect: (period: ReportPeriod) => void;
 	onClose: () => void;
 }
 
-const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
+const ReportPeriodPickerModal: React.FC<ReportPeriodPickerModalProps> = ({
 	visible,
-	type,
-	childName,
-	monthlyReport,
-	goalReport,
+	onSelect,
 	onClose,
 }) => (
-	<Modal
-		visible={visible}
-		animationType="slide"
-		presentationStyle="pageSheet"
-		onRequestClose={onClose}
-	>
-		<SafeAreaView style={reportStyles.modalRoot} edges={['top', 'left', 'right', 'bottom']}>
-			<View style={reportStyles.modalHeader}>
-				<View style={reportStyles.modalHeaderText}>
-					<Text style={reportStyles.modalEyebrow}>
-						{type === 'monthly' ? 'Monthly PDF Report' : 'Goal-wise Download Report'}
-					</Text>
-					<Text style={reportStyles.modalTitle}>
-						{type === 'monthly' ? `${childName}'s monthly report` : `${childName}'s goal report`}
-					</Text>
-				</View>
-				<Pressable onPress={onClose} style={reportStyles.closeBtn} accessibilityLabel="Close report">
-					<Icon name="close" size={22} color={colors.ink} />
+	<Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+		<Pressable style={pickerStyles.backdrop} onPress={onClose} accessibilityLabel="Dismiss" />
+		<View style={pickerStyles.sheetWrap} pointerEvents="box-none">
+			<View style={pickerStyles.sheet}>
+				<Text style={pickerStyles.title}>Download report</Text>
+				<Text style={pickerStyles.subtitle}>Which report would you like?</Text>
+
+				<Pressable
+					onPress={() => onSelect('weekly')}
+					style={({ pressed }) => [pickerStyles.option, pressed && pickerStyles.optionPressed]}
+					accessibilityRole="button"
+					accessibilityLabel="Download weekly report"
+				>
+					<View style={pickerStyles.optionIconWrap}>
+						<Icon name="calendar-view-week" size={20} color={colors.primary} />
+					</View>
+					<View style={pickerStyles.optionTextWrap}>
+						<Text style={pickerStyles.optionTitle}>Weekly report</Text>
+						<Text style={pickerStyles.optionHint}>This week's scores and activity</Text>
+					</View>
+					<Icon name="chevron-right" size={20} color={colors.textMuted} />
+				</Pressable>
+
+				<Pressable
+					onPress={() => onSelect('monthly')}
+					style={({ pressed }) => [pickerStyles.option, pressed && pickerStyles.optionPressed]}
+					accessibilityRole="button"
+					accessibilityLabel="Download monthly report"
+				>
+					<View style={pickerStyles.optionIconWrap}>
+						<Icon name="calendar-month" size={20} color={colors.primary} />
+					</View>
+					<View style={pickerStyles.optionTextWrap}>
+						<Text style={pickerStyles.optionTitle}>Monthly report</Text>
+						<Text style={pickerStyles.optionHint}>Full month summary and trends</Text>
+					</View>
+					<Icon name="chevron-right" size={20} color={colors.textMuted} />
+				</Pressable>
+
+				<Pressable
+					onPress={onClose}
+					style={({ pressed }) => [pickerStyles.cancelBtn, pressed && pickerStyles.optionPressed]}
+					accessibilityRole="button"
+					accessibilityLabel="Cancel"
+				>
+					<Text style={pickerStyles.cancelText}>Cancel</Text>
 				</Pressable>
 			</View>
-
-			<ScrollView
-				style={reportStyles.modalScroll}
-				contentContainerStyle={reportStyles.modalContent}
-				showsVerticalScrollIndicator={false}
-			>
-				{type === 'monthly' ? (
-					<MonthlyReportView childName={childName} report={monthlyReport} />
-				) : type === 'goalwise' ? (
-					<GoalWiseReportView report={goalReport} />
-				) : null}
-			</ScrollView>
-		</SafeAreaView>
+		</View>
 	</Modal>
 );
 
-const MonthlyReportView = React.memo(
-	({ childName, report }: { childName: string; report: MonthlyPdfReport }) => (
-		<>
-			<View style={reportStyles.heroCard}>
-				<Text style={reportStyles.heroTitle}>{report.monthLabel}</Text>
-				<Text style={reportStyles.heroSubtitle}>
-					{childName}, monthly BSI, family trust, goal progress, behaviour chips, and guidance in one place.
-				</Text>
-				<View style={reportStyles.heroMetaRow}>
-					<MetaPill icon="person" label={childName} />
-					<MetaPill icon="calendar-month" label={report.monthLabel} />
-				</View>
-			</View>
+const monthBarStyles = StyleSheet.create({
+	monthBar: {
+		paddingHorizontal: spacing.lg,
+		paddingTop: spacing.sm,
+		alignItems: 'flex-start',
+	},
+	monthBarPill: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 4,
+		paddingVertical: 8,
+		paddingHorizontal: spacing.md,
+		borderRadius: borderRadius.full,
+		backgroundColor: colors.lavenderSoft,
+		borderWidth: StyleSheet.hairlineWidth,
+		borderColor: 'rgba(124,106,232,0.2)',
+	},
+	monthBarPillText: {
+		...textStyles.bodyMedium,
+		fontWeight: '800',
+		color: colors.primary,
+	},
+});
 
-			<ReportSection title="Core scores" icon="query-stats">
-				<View style={reportStyles.metricGrid}>
-					<MetricTile label="Monthly BSI" value={`${report.metrics.bsi}%`} tint={colors.primary} />
-					<MetricTile label="Family Score" value={`${report.metrics.familyScore}%`} tint={colors.accent} />
-					<MetricTile label="Trust Meter" value={`${report.metrics.trust}%`} tint={colors.growth} />
-					<MetricTile
-						label="Parent Consistency"
-						value={`${report.metrics.parentConsistency}%`}
-						tint={colors.info}
-					/>
-				</View>
-			</ReportSection>
-
-			<ReportSection title="Aspect trends" icon="insights">
-				{report.aspects.map((aspect) => (
-					<View key={aspect.id} style={reportStyles.rowCard}>
-						<View style={[reportStyles.rowIconWrap, { backgroundColor: `${aspect.accent}16` }]}>
-							<Icon name={aspect.iconName} size={18} color={aspect.accent} />
-						</View>
-						<View style={reportStyles.rowTextWrap}>
-							<Text style={reportStyles.rowTitle}>{aspect.name}</Text>
-							<Text style={reportStyles.rowSubtitle}>
-								Trend {aspect.trend >= 0 ? `+${aspect.trend}` : aspect.trend}% this month
-							</Text>
-						</View>
-						<Text style={reportStyles.rowValue}>{aspect.score}%</Text>
-					</View>
-				))}
-			</ReportSection>
-
-			<ReportSection title="Behaviour chips" icon="sell">
-				<Text style={reportStyles.blockLabel}>Positive behaviour chips during the month</Text>
-				<View style={reportStyles.chipsWrap}>
-					{report.positiveChips.map((chip) => (
-						<CountChip key={chip.label} chip={chip} />
-					))}
-				</View>
-				<Text style={[reportStyles.blockLabel, reportStyles.blockLabelTight]}>
-					Negative behaviour chips during the month
-				</Text>
-				<View style={reportStyles.chipsWrap}>
-					{report.negativeChips.map((chip) => (
-						<CountChip key={chip.label} chip={chip} />
-					))}
-				</View>
-			</ReportSection>
-
-			<ReportSection title="DBS summary" icon="calendar-view-month">
-				<View style={reportStyles.metricGrid}>
-					<MetricTile label="Active days" value={String(report.dbsSummary.activeDays)} tint={colors.primaryDark} />
-					<MetricTile label="Average DBS" value={`${report.dbsSummary.averageScore}`} tint={colors.growth} />
-				</View>
-				<View style={reportStyles.infoBlock}>
-					<Text style={reportStyles.infoText}>Best day: {report.dbsSummary.bestDay}</Text>
-					<Text style={reportStyles.infoText}>Needs attention day: {report.dbsSummary.needsAttentionDay}</Text>
-				</View>
-			</ReportSection>
-
-			<ReportSection title="Logged totals" icon="dataset">
-				<View style={reportStyles.metricGrid}>
-					<MetricTile label="Total logged data" value={String(report.totals.loggedData)} tint={colors.primary} />
-					<MetricTile label="Parent entries" value={String(report.totals.parentEntries)} tint={colors.accent} />
-				</View>
-			</ReportSection>
-
-			<ReportSection title="Goal progress & reward eligibility" icon="emoji-events">
-				<View style={reportStyles.infoBlock}>
-					<Text style={reportStyles.infoHeadline}>{report.goalProgress.title}</Text>
-					<Text style={reportStyles.infoText}>Reward: {report.goalProgress.reward}</Text>
-					<Text style={reportStyles.infoText}>
-						Progress: {report.goalProgress.current}/{report.goalProgress.target} pts
-					</Text>
-					<Text style={reportStyles.infoHeadline}>{report.goalProgress.eligibilityText}</Text>
-					<Text style={reportStyles.infoText}>{report.goalProgress.explanation}</Text>
-				</View>
-			</ReportSection>
-
-			<ReportSection title="Parent guidance" icon="lightbulb">
-				{report.guidance.map((line) => (
-					<BulletLine key={line} text={line} />
-				))}
-			</ReportSection>
-
-			<ReportSection title="Improve next month" icon="trending-up">
-				{report.nextMonthFocus.map((line) => (
-					<BulletLine key={line} text={line} />
-				))}
-			</ReportSection>
-		</>
-	)
-);
-
-const GoalWiseReportView = React.memo(({ report }: { report: GoalWiseReport }) => (
-	<>
-		<View style={reportStyles.heroCard}>
-			<Text style={reportStyles.heroTitle}>{report.goalName}</Text>
-			<Text style={reportStyles.heroSubtitle}>
-				Target, reward, daily logs, behaviour chips, achieved score, and reward eligibility explanation.
-			</Text>
-			<View style={reportStyles.heroMetaRow}>
-				<MetaPill icon="flag" label={`Target ${report.target} pts`} />
-				<MetaPill icon="redeem" label={report.reward} />
-			</View>
-		</View>
-
-		<ReportSection title="Goal summary" icon="assignment-turned-in">
-			<View style={reportStyles.infoBlock}>
-				<Text style={reportStyles.infoText}>Reward: {report.reward}</Text>
-				<Text style={reportStyles.infoText}>Duration: {report.duration}</Text>
-				<Text style={reportStyles.infoText}>Achieved score: {report.achievedScore}</Text>
-				<Text style={reportStyles.infoHeadline}>{report.finalResult}</Text>
-			</View>
-		</ReportSection>
-
-		<ReportSection title="Goal period daily logs" icon="today">
-			{report.dailyLogs.map((log) => (
-				<View key={log.date} style={reportStyles.logRow}>
-					<View style={reportStyles.logDateWrap}>
-						<Text style={reportStyles.logDate}>{log.date}</Text>
-						<Text style={reportStyles.logNote}>{log.note}</Text>
-					</View>
-					<View style={reportStyles.logTagWrap}>
-						{log.positiveChip ? <TagPill label={log.positiveChip} tone="positive" /> : null}
-						{log.negativeChip ? <TagPill label={log.negativeChip} tone="negative" /> : null}
-						<Text style={reportStyles.logPoints}>
-							{log.pointsDelta > 0 ? `+${log.pointsDelta}` : log.pointsDelta}
-						</Text>
-					</View>
-				</View>
-			))}
-		</ReportSection>
-
-		<ReportSection title="Behaviour chips during goal period" icon="sell">
-			<Text style={reportStyles.blockLabel}>Positive chips</Text>
-			<View style={reportStyles.chipsWrap}>
-				{report.positiveChips.map((chip) => (
-					<CountChip key={chip.label} chip={chip} />
-				))}
-			</View>
-			<Text style={[reportStyles.blockLabel, reportStyles.blockLabelTight]}>Negative chips</Text>
-			<View style={reportStyles.chipsWrap}>
-				{report.negativeChips.map((chip) => (
-					<CountChip key={chip.label} chip={chip} />
-				))}
-			</View>
-		</ReportSection>
-
-		<ReportSection title="Eligibility explanation" icon="rule">
-			<View style={reportStyles.infoBlock}>
-				<Text style={reportStyles.infoHeadline}>{report.rewardAchieved ? 'Reward achieved' : 'Reward not achieved'}</Text>
-				<Text style={reportStyles.infoText}>{report.reasonExplanation}</Text>
-			</View>
-		</ReportSection>
-
-		<ReportSection title="Improvement note for next attempt" icon="edit-note">
-			<BulletLine text={report.improvementNote} />
-		</ReportSection>
-	</>
-));
-
-const ReportSection = ({
-	title,
-	icon,
-	children,
-}: {
-	title: string;
-	icon: string;
-	children: React.ReactNode;
-}) => (
-	<View style={reportStyles.sectionCard}>
-		<View style={reportStyles.sectionHeader}>
-			<View style={reportStyles.sectionIconWrap}>
-				<Icon name={icon} size={16} color={colors.primary} />
-			</View>
-			<Text style={reportStyles.sectionTitle}>{title}</Text>
-		</View>
-		{children}
-	</View>
-);
-
-const MetricTile = ({ label, value, tint }: { label: string; value: string; tint: string }) => (
-	<View style={reportStyles.metricTile}>
-		<Text style={[reportStyles.metricValue, { color: tint }]}>{value}</Text>
-		<Text style={reportStyles.metricLabel}>{label}</Text>
-	</View>
-);
-
-const CountChip = ({
-	chip,
-}: {
-	chip: { label: string; count: number; kind: 'positive' | 'negative' };
-}) => (
-	<View
-		style={[
-			reportStyles.countChip,
-			chip.kind === 'positive' ? reportStyles.countChipPositive : reportStyles.countChipNegative,
-		]}
-	>
-		<Text
-			style={[
-				reportStyles.countChipText,
-				chip.kind === 'positive' ? reportStyles.countChipTextPositive : reportStyles.countChipTextNegative,
-			]}
-		>
-			{chip.label} x{chip.count}
-		</Text>
-	</View>
-);
-
-const TagPill = ({ label, tone }: { label: string; tone: 'positive' | 'negative' }) => (
-	<View style={[reportStyles.tagPill, tone === 'positive' ? reportStyles.tagPillPositive : reportStyles.tagPillNegative]}>
-		<Text style={[reportStyles.tagPillText, tone === 'positive' ? reportStyles.tagPillTextPositive : reportStyles.tagPillTextNegative]}>
-			{label}
-		</Text>
-	</View>
-);
-
-const BulletLine = ({ text }: { text: string }) => (
-	<View style={reportStyles.bulletRow}>
-		<View style={reportStyles.bulletDot} />
-		<Text style={reportStyles.bulletText}>{text}</Text>
-	</View>
-);
-
-const MetaPill = ({ icon, label }: { icon: string; label: string }) => (
-	<View style={reportStyles.metaPill}>
-		<Icon name={icon} size={14} color={colors.primary} />
-		<Text style={reportStyles.metaPillText}>{label}</Text>
-	</View>
-);
+const pickerStyles = StyleSheet.create({
+	backdrop: {
+		...StyleSheet.absoluteFillObject,
+		backgroundColor: 'rgba(13, 13, 13, 0.45)',
+	},
+	sheetWrap: {
+		flex: 1,
+		justifyContent: 'center',
+		alignItems: 'center',
+		paddingHorizontal: spacing.lg,
+	},
+	sheet: {
+		width: '100%',
+		maxWidth: 360,
+		backgroundColor: colors.surface,
+		borderRadius: borderRadius.xl,
+		padding: spacing.lg,
+	},
+	title: {
+		...textStyles.headingMedium,
+		fontWeight: '800',
+		color: colors.ink,
+	},
+	subtitle: {
+		...textStyles.bodyMedium,
+		color: colors.textSecondary,
+		marginTop: 2,
+		marginBottom: spacing.md,
+	},
+	option: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: spacing.sm,
+		paddingVertical: spacing.sm,
+		paddingHorizontal: spacing.xs,
+		borderRadius: borderRadius.large,
+	},
+	optionPressed: {
+		backgroundColor: colors.surfaceMuted,
+	},
+	optionIconWrap: {
+		width: 40,
+		height: 40,
+		borderRadius: 20,
+		backgroundColor: colors.lavenderSoft,
+		alignItems: 'center',
+		justifyContent: 'center',
+	},
+	optionTextWrap: {
+		flex: 1,
+		minWidth: 0,
+	},
+	optionTitle: {
+		...textStyles.bodyLarge,
+		fontWeight: '800',
+		color: colors.ink,
+	},
+	optionHint: {
+		...textStyles.caption,
+		color: colors.textMuted,
+		marginTop: 2,
+	},
+	cancelBtn: {
+		marginTop: spacing.sm,
+		alignItems: 'center',
+		paddingVertical: spacing.sm,
+		borderRadius: borderRadius.large,
+	},
+	cancelText: {
+		...textStyles.bodyMedium,
+		fontWeight: '700',
+		color: colors.textSecondary,
+	},
+});
 
 /* ═══════════════════════════════════════════════════════════════════ */
 /*  Section Divider — decorative break between major sections        */
@@ -615,307 +505,5 @@ const dividerStyles = StyleSheet.create({
 		color: colors.primary,
 		letterSpacing: 0.4,
 		textTransform: 'uppercase',
-	},
-});
-
-const reportStyles = StyleSheet.create({
-	modalRoot: {
-		flex: 1,
-		backgroundColor: colors.background,
-	},
-	modalHeader: {
-		flexDirection: 'row',
-		alignItems: 'center',
-		justifyContent: 'space-between',
-		paddingHorizontal: spacing.lg,
-		paddingVertical: spacing.md,
-		backgroundColor: colors.surface,
-		borderBottomWidth: StyleSheet.hairlineWidth,
-		borderBottomColor: colors.border,
-	},
-	modalHeaderText: {
-		flex: 1,
-		minWidth: 0,
-	},
-	modalEyebrow: {
-		fontSize: 11,
-		fontWeight: '800',
-		color: colors.primary,
-		textTransform: 'uppercase',
-		letterSpacing: 0.5,
-		marginBottom: 3,
-	},
-	modalTitle: {
-		...textStyles.headingMedium,
-		fontWeight: '800',
-		color: colors.ink,
-	},
-	closeBtn: {
-		width: 40,
-		height: 40,
-		borderRadius: 20,
-		alignItems: 'center',
-		justifyContent: 'center',
-		backgroundColor: colors.surfaceMuted,
-		marginLeft: spacing.sm,
-	},
-	modalScroll: {
-		flex: 1,
-	},
-	modalContent: {
-		padding: spacing.lg,
-		paddingBottom: spacing.xxl,
-		gap: spacing.md,
-	},
-	heroCard: {
-		padding: spacing.lg,
-		borderRadius: borderRadius.xxl,
-		backgroundColor: '#F6F2FF',
-		borderWidth: StyleSheet.hairlineWidth,
-		borderColor: 'rgba(124,106,232,0.16)',
-	},
-	heroTitle: {
-		...textStyles.headingMedium,
-		fontWeight: '800',
-		color: colors.ink,
-		marginBottom: spacing.xs,
-	},
-	heroSubtitle: {
-		...textStyles.bodyMedium,
-		color: colors.textPrimary,
-		lineHeight: 20,
-	},
-	heroMetaRow: {
-		flexDirection: 'row',
-		flexWrap: 'wrap',
-		gap: spacing.sm,
-		marginTop: spacing.md,
-	},
-	metaPill: {
-		flexDirection: 'row',
-		alignItems: 'center',
-		gap: 6,
-		paddingHorizontal: spacing.sm,
-		paddingVertical: 7,
-		borderRadius: borderRadius.full,
-		backgroundColor: colors.surface,
-		borderWidth: StyleSheet.hairlineWidth,
-		borderColor: 'rgba(124,106,232,0.12)',
-	},
-	metaPillText: {
-		fontSize: 12,
-		fontWeight: '700',
-		color: colors.ink,
-	},
-	sectionCard: {
-		backgroundColor: colors.surface,
-		borderRadius: borderRadius.xl,
-		padding: spacing.md,
-		borderWidth: StyleSheet.hairlineWidth,
-		borderColor: 'rgba(17,17,17,0.06)',
-	},
-	sectionHeader: {
-		flexDirection: 'row',
-		alignItems: 'center',
-		gap: spacing.sm,
-		marginBottom: spacing.md,
-	},
-	sectionIconWrap: {
-		width: 30,
-		height: 30,
-		borderRadius: 15,
-		backgroundColor: colors.lavenderSoft,
-		alignItems: 'center',
-		justifyContent: 'center',
-	},
-	sectionTitle: {
-		...textStyles.bodyLarge,
-		fontWeight: '800',
-		color: colors.ink,
-	},
-	metricGrid: {
-		flexDirection: 'row',
-		flexWrap: 'wrap',
-		gap: spacing.sm,
-	},
-	metricTile: {
-		width: '47%',
-		backgroundColor: '#FBFBFF',
-		borderRadius: borderRadius.large,
-		paddingVertical: spacing.md,
-		paddingHorizontal: spacing.sm,
-		borderWidth: StyleSheet.hairlineWidth,
-		borderColor: 'rgba(17,17,17,0.06)',
-	},
-	metricValue: {
-		fontSize: 22,
-		fontWeight: '800',
-		marginBottom: 4,
-	},
-	metricLabel: {
-		...textStyles.caption,
-		color: colors.textSecondary,
-		fontWeight: '700',
-	},
-	rowCard: {
-		flexDirection: 'row',
-		alignItems: 'center',
-		gap: spacing.sm,
-		paddingVertical: spacing.sm,
-	},
-	rowIconWrap: {
-		width: 36,
-		height: 36,
-		borderRadius: 18,
-		alignItems: 'center',
-		justifyContent: 'center',
-	},
-	rowTextWrap: {
-		flex: 1,
-		minWidth: 0,
-	},
-	rowTitle: {
-		fontSize: 14,
-		fontWeight: '800',
-		color: colors.ink,
-	},
-	rowSubtitle: {
-		...textStyles.caption,
-		color: colors.textSecondary,
-		marginTop: 2,
-	},
-	rowValue: {
-		fontSize: 15,
-		fontWeight: '800',
-		color: colors.ink,
-	},
-	chipsWrap: {
-		flexDirection: 'row',
-		flexWrap: 'wrap',
-		gap: spacing.sm,
-	},
-	countChip: {
-		paddingHorizontal: spacing.sm,
-		paddingVertical: 7,
-		borderRadius: borderRadius.full,
-		borderWidth: StyleSheet.hairlineWidth,
-	},
-	countChipPositive: {
-		backgroundColor: colors.mintSoft,
-		borderColor: 'rgba(63,169,122,0.22)',
-	},
-	countChipNegative: {
-		backgroundColor: colors.peachSoft,
-		borderColor: 'rgba(232,93,93,0.18)',
-	},
-	countChipText: {
-		fontSize: 12,
-		fontWeight: '700',
-	},
-	countChipTextPositive: {
-		color: colors.growth,
-	},
-	countChipTextNegative: {
-		color: colors.error,
-	},
-	blockLabel: {
-		fontSize: 12,
-		fontWeight: '800',
-		color: colors.textSecondary,
-		marginBottom: spacing.sm,
-	},
-	blockLabelTight: {
-		marginTop: spacing.md,
-	},
-	infoBlock: {
-		backgroundColor: '#FBFBFF',
-		borderRadius: borderRadius.large,
-		padding: spacing.md,
-		borderWidth: StyleSheet.hairlineWidth,
-		borderColor: 'rgba(17,17,17,0.06)',
-		gap: spacing.xs,
-	},
-	infoHeadline: {
-		fontSize: 14,
-		fontWeight: '800',
-		color: colors.ink,
-	},
-	infoText: {
-		...textStyles.bodyMedium,
-		fontSize: 13,
-		color: colors.textPrimary,
-		lineHeight: 19,
-	},
-	bulletRow: {
-		flexDirection: 'row',
-		alignItems: 'flex-start',
-		gap: spacing.sm,
-		marginBottom: spacing.sm,
-	},
-	bulletDot: {
-		width: 8,
-		height: 8,
-		borderRadius: 4,
-		backgroundColor: colors.primary,
-		marginTop: 6,
-	},
-	bulletText: {
-		...textStyles.bodyMedium,
-		flex: 1,
-		color: colors.textPrimary,
-		lineHeight: 19,
-	},
-	logRow: {
-		paddingVertical: spacing.sm,
-		borderBottomWidth: StyleSheet.hairlineWidth,
-		borderBottomColor: 'rgba(17,17,17,0.06)',
-	},
-	logDateWrap: {
-		marginBottom: spacing.xs,
-	},
-	logDate: {
-		fontSize: 13,
-		fontWeight: '800',
-		color: colors.ink,
-	},
-	logNote: {
-		...textStyles.caption,
-		color: colors.textSecondary,
-		marginTop: 2,
-	},
-	logTagWrap: {
-		flexDirection: 'row',
-		flexWrap: 'wrap',
-		alignItems: 'center',
-		gap: spacing.sm,
-	},
-	tagPill: {
-		paddingHorizontal: spacing.sm,
-		paddingVertical: 6,
-		borderRadius: borderRadius.full,
-		borderWidth: StyleSheet.hairlineWidth,
-	},
-	tagPillPositive: {
-		backgroundColor: colors.mintSoft,
-		borderColor: 'rgba(63,169,122,0.22)',
-	},
-	tagPillNegative: {
-		backgroundColor: colors.peachSoft,
-		borderColor: 'rgba(232,93,93,0.18)',
-	},
-	tagPillText: {
-		fontSize: 11,
-		fontWeight: '700',
-	},
-	tagPillTextPositive: {
-		color: colors.growth,
-	},
-	tagPillTextNegative: {
-		color: colors.error,
-	},
-	logPoints: {
-		fontSize: 13,
-		fontWeight: '800',
-		color: colors.primary,
 	},
 });

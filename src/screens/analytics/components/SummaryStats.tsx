@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
@@ -8,8 +8,6 @@ import { analyticsStyles as shared } from '../styles';
 import { SkeletonBox, SkeletonShimmer } from '../../../components';
 import type { SummaryStatsData } from '../../../types/summaryStats';
 
-type SummaryPeriod = 'weekly' | 'monthly';
-
 /* ═══════════════════════════════════════════════════════════════════ */
 /*  Props                                                             */
 /* ═══════════════════════════════════════════════════════════════════ */
@@ -17,8 +15,8 @@ interface SummaryStatsProps {
 	counters: SummaryStatsData | null;
 	loading: boolean;
 	error: boolean;
-	summaryPeriod: SummaryPeriod;
-	onTogglePeriod: (period: SummaryPeriod) => void;
+	/** e.g. "Sep 2026" — the screen-wide selected month this card's data belongs to. */
+	monthLabel: string;
 }
 
 /* ═══════════════════════════════════════════════════════════════════ */
@@ -38,8 +36,7 @@ const SummaryStats: React.FC<SummaryStatsProps> = ({
 	counters,
 	loading,
 	error,
-	summaryPeriod,
-	onTogglePeriod,
+	monthLabel,
 }) => {
 	const showSkeleton = loading && !counters;
 	return (
@@ -51,43 +48,10 @@ const SummaryStats: React.FC<SummaryStatsProps> = ({
 				<View style={s.headerRow}>
 					<View style={s.titleRow}>
 						<Text style={shared.sectionEyebrow}>Activity snapshot</Text>
-						<Text style={s.summaryTitle}>
-							{summaryPeriod === 'weekly' ? 'This week at a glance' : 'This month at a glance'}
-						</Text>
+						<Text style={s.summaryTitle}>{monthLabel} at a glance</Text>
 					</View>
-					<View style={s.bsiToggle}>
-						<Pressable
-							onPress={() => onTogglePeriod('weekly')}
-							style={[
-								s.bsiToggleBtn,
-								summaryPeriod === 'weekly' && s.bsiToggleBtnActive,
-							]}
-						>
-							<Text
-								style={[
-									s.bsiToggleText,
-									summaryPeriod === 'weekly' && s.bsiToggleTextActive,
-								]}
-							>
-								Weekly
-							</Text>
-						</Pressable>
-						<Pressable
-							onPress={() => onTogglePeriod('monthly')}
-							style={[
-								s.bsiToggleBtn,
-								summaryPeriod === 'monthly' && s.bsiToggleBtnActive,
-							]}
-						>
-							<Text
-								style={[
-									s.bsiToggleText,
-									summaryPeriod === 'monthly' && s.bsiToggleTextActive,
-								]}
-							>
-								Monthly
-							</Text>
-						</Pressable>
+					<View style={s.monthPill}>
+						<Text style={s.monthPillText}>{monthLabel}</Text>
 					</View>
 				</View>
 
@@ -231,39 +195,16 @@ const s = StyleSheet.create({
 		letterSpacing: 0.1,
 		lineHeight: 12
 	},
-	bsiToggle: {
-		flexDirection: 'row',
-		backgroundColor: colors.surfaceMuted,
+	monthPill: {
+		backgroundColor: colors.lavenderSoft,
 		borderRadius: borderRadius.full,
-		padding: 2,
-		borderWidth: StyleSheet.hairlineWidth,
-		borderColor: colors.border,
-	},
-	bsiToggleBtn: {
 		paddingHorizontal: spacing.sm,
 		paddingVertical: 5,
-		borderRadius: borderRadius.full,
 	},
-	bsiToggleBtnActive: {
-		backgroundColor: colors.surface,
-		...Platform.select({
-			ios: {
-				shadowColor: colors.primary,
-				shadowOffset: { width: 0, height: 1 },
-				shadowOpacity: 0.12,
-				shadowRadius: 4,
-			},
-			android: { elevation: 2 },
-			default: {},
-		}),
-	},
-	bsiToggleText: {
+	monthPillText: {
 		fontSize: 11,
 		fontWeight: '700',
-		color: colors.textMuted,
-		letterSpacing: 0.2,
-	},
-	bsiToggleTextActive: {
 		color: colors.primary,
+		letterSpacing: 0.2,
 	},
 });

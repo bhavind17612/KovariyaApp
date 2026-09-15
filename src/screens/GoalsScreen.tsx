@@ -37,6 +37,7 @@ import { toIsoDate } from '../utils/age';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import { useChildren } from '../context/ChildrenContext';
+import { blockIfUnverified } from '../utils/verificationGuard';
 import { api, ENDPOINTS } from '../api';
 import type { Goal, GoalStatus } from '../types';
 import {
@@ -229,7 +230,11 @@ function SummaryStat({
 const GoalsScreen: React.FC = () => {
 	const { showToast } = useToast();
 	const { user } = useAuth();
-	const { selectedChildId } = useChildren();
+	const { children, selectedChildId } = useChildren();
+	const selectedChild = useMemo(
+		() => children.find((c) => c.id === selectedChildId) ?? children[0] ?? null,
+		[children, selectedChildId]
+	);
 	const navigation = useNavigation<any>();
 	const insets = useSafeAreaInsets();
 	const [goals, setGoals] = useState<Goal[]>([]);
@@ -262,13 +267,19 @@ const GoalsScreen: React.FC = () => {
 		}, [])
 	);
 
-	// Load goals from API for the signed-in parent.
+	// Load goals from API for the signed-in parent, scoped to the selected child.
 	const loadGoals = useCallback(async () => {
 		const parentUuid = user?.id;
 		if (!parentUuid) return;
-		const res = await api.get<ApiGoal[]>(ENDPOINTS.GOALS.BY_PARENT(parentUuid));
+		if (!selectedChildId) {
+			setGoals([]);
+			return;
+		}
+		const res = await api.get<ApiGoal[]>(ENDPOINTS.GOALS.BY_PARENT(parentUuid), {
+			params: { student_id: selectedChildId },
+		});
 		setGoals(mapApiGoalsToGoals(res.data.data ?? []));
-	}, [user?.id]);
+	}, [user?.id, selectedChildId]);
 
 	useEffect(() => {
 		// Wait for auth before the first fetch — keep the skeleton visible meanwhile.
@@ -291,7 +302,7 @@ const GoalsScreen: React.FC = () => {
 		return () => {
 			active = false;
 		};
-	}, [user?.id, loadGoals, showToast]);
+	}, [user?.id, selectedChildId, loadGoals, showToast]);
 
 	const retryLoad = useCallback(() => {
 		setLoading(true);
@@ -418,6 +429,7 @@ const GoalsScreen: React.FC = () => {
 	}, []);
 
 	const openModal = useCallback(() => {
+		if (blockIfUnverified(selectedChild)) return;
 		Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 		resetForm();
 		// Already fetched on mount; re-request only if that attempt came back empty,
@@ -426,7 +438,7 @@ const GoalsScreen: React.FC = () => {
 			loadAspects();
 		}
 		setModalOpen(true);
-	}, [resetForm, loadAspects, aspects.length]);
+	}, [resetForm, loadAspects, aspects.length, selectedChild]);
 
 	const closeModal = useCallback(() => {
 		setModalOpen(false);

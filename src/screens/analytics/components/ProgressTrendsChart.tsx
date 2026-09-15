@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, Platform, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, Platform, useWindowDimensions } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import Svg, { Circle, Polyline, Line, Text as SvgText } from 'react-native-svg';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -24,8 +24,8 @@ interface ProgressTrendsChartProps {
 	data: TrendPoint[];
 	loading: boolean;
 	error: boolean;
-	period: 'weekly' | 'monthly';
-	onTogglePeriod: (period: 'weekly' | 'monthly') => void;
+	/** e.g. "Sep 2026" — the screen-wide selected month this card's data belongs to. */
+	monthLabel: string;
 	childName: string;
 }
 
@@ -45,8 +45,7 @@ const ProgressTrendsChart: React.FC<ProgressTrendsChartProps> = ({
 	data: series,
 	loading,
 	error,
-	period,
-	onTogglePeriod,
+	monthLabel,
 	childName,
 }) => {
 	const { width: windowWidth } = useWindowDimensions();
@@ -105,44 +104,8 @@ const ProgressTrendsChart: React.FC<ProgressTrendsChartProps> = ({
 							</Text>
 						</View>
 					</View>
-					{/* <View style={s.trendScorePill}>
-						<Text style={s.trendScorePillLabel}>Now</Text>
-						<Text style={s.trendScorePillValue}>{latest?.bsi ?? 0}</Text>
-					</View> */}
-					{/* Period toggle */}
-					<View style={s.trendToggle}>
-						<Pressable
-							onPress={() => onTogglePeriod('weekly')}
-							style={[
-								s.trendToggleBtn,
-								period === 'weekly' && s.trendToggleBtnActive,
-							]}
-						>
-							<Text
-								style={[
-									s.trendToggleText,
-									period === 'weekly' && s.trendToggleTextActive,
-								]}
-							>
-								Weekly
-							</Text>
-						</Pressable>
-						<Pressable
-							onPress={() => onTogglePeriod('monthly')}
-							style={[
-								s.trendToggleBtn,
-								period === 'monthly' && s.trendToggleBtnActive,
-							]}
-						>
-							<Text
-								style={[
-									s.trendToggleText,
-									period === 'monthly' && s.trendToggleTextActive,
-								]}
-							>
-								Monthly
-							</Text>
-						</Pressable>
+					<View style={s.monthPill}>
+						<Text style={s.monthPillText}>{monthLabel}</Text>
 					</View>
 				</View>
 
@@ -370,42 +333,18 @@ const s = StyleSheet.create({
 		color: colors.primaryDark,
 		letterSpacing: -0.4,
 	},
-	trendToggle: {
-		flexDirection: 'row',
+	monthPill: {
 		alignSelf: 'flex-start',
-		backgroundColor: colors.surfaceMuted,
+		backgroundColor: colors.lavenderSoft,
 		borderRadius: borderRadius.full,
-		padding: 2,
-		borderWidth: StyleSheet.hairlineWidth,
-		borderColor: colors.border,
-		marginBottom: spacing.sm,
-	},
-	trendToggleBtn: {
 		paddingHorizontal: spacing.sm,
 		paddingVertical: 5,
-		borderRadius: borderRadius.full,
 	},
-	trendToggleBtnActive: {
-		backgroundColor: colors.surface,
-		...Platform.select({
-			ios: {
-				shadowColor: colors.primary,
-				shadowOffset: { width: 0, height: 1 },
-				shadowOpacity: 0.12,
-				shadowRadius: 4,
-			},
-			android: { elevation: 2 },
-			default: {},
-		}),
-	},
-	trendToggleText: {
+	monthPillText: {
 		fontSize: 11,
 		fontWeight: '700',
-		color: colors.textMuted,
-		letterSpacing: 0.2,
-	},
-	trendToggleTextActive: {
 		color: colors.primary,
+		letterSpacing: 0.2,
 	},
 	chartPanel: {
 		borderRadius: borderRadius.xl,

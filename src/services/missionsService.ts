@@ -75,8 +75,11 @@ function normalizeMission(m: RawMentorMission): MentorMission {
 }
 
 class MissionsService {
-  async getMissions(): Promise<MentorMission[]> {
-    const response = await api.get<RawMentorMission[]>(ENDPOINTS.MISSIONS.LIST);
+  /** Every mission assigned to a child. */
+  async getMissions(studentUuid: string): Promise<MentorMission[]> {
+    const response = await api.get<RawMentorMission[]>(ENDPOINTS.MISSIONS.PARENT_LIST, {
+      params: { student_id: studentUuid },
+    });
     const list = Array.isArray(response.data.data) ? response.data.data : [];
     return list.map(normalizeMission);
   }

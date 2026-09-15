@@ -53,6 +53,7 @@ import {
 import { Child } from '../types';
 import { useToast } from '../context/ToastContext';
 import { useChildren, isChildVerified } from '../context/ChildrenContext';
+import { blockIfUnverified } from '../utils/verificationGuard';
 import {
   DASHBOARD_RATING_ASPECTS,
   formatDailyRatingSum,
@@ -410,6 +411,7 @@ const DashboardScreen: React.FC = () => {
   );
 
   const handleMarkDone = useCallback(() => {
+    if (blockIfUnverified(selectedChild)) return;
     // Only offer the photo-proof flow when the mission explicitly allows it —
     // otherwise mark done straight away, same as MissionDetailScreen's canUploadProof gate.
     if (todayMission?.allowUploadProof !== true) {
@@ -424,11 +426,12 @@ const DashboardScreen: React.FC = () => {
         { text: 'Add Photo', onPress: () => setProofModalOpen(true) },
       ]
     );
-  }, [submitMissionLog, todayMission?.allowUploadProof]);
+  }, [submitMissionLog, todayMission?.allowUploadProof, selectedChild]);
 
   const handleMarkMissed = useCallback(() => {
+    if (blockIfUnverified(selectedChild)) return;
     submitMissionLog('missed');
-  }, [submitMissionLog]);
+  }, [submitMissionLog, selectedChild]);
 
   // ── Behaviour aspects ────────────────────────────────────────────────────
   // Fetches the aspect list from the API and merges it with the local visual
@@ -562,8 +565,9 @@ const DashboardScreen: React.FC = () => {
   const { refreshing, onRefresh } = usePullToRefresh(refreshDashboard);
 
   const openAspectRating = useCallback((aspect: RatingAspectDefinition) => {
+    if (blockIfUnverified(selectedChild)) return;
     setRatingSheetAspect(aspect);
-  }, []);
+  }, [selectedChild]);
 
   const closeAspectRating = useCallback(() => setRatingSheetAspect(null), []);
 

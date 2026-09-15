@@ -96,9 +96,15 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
   const [isLoadingTranslations, setIsLoadingTranslations] = useState(false);
   const [translationFetchError, setTranslationFetchError] = useState(false);
 
-  // Fetch translations from the API whenever languageId changes.
+  // Fetch translations every time the sheet opens (mirrors the reason-chips
+  // fetch below) rather than only when languageId itself changes — otherwise
+  // a language switched while the sheet was closed would only take effect on
+  // whichever future render happens to change languageId, not on next open.
   // No static fallback — the API is the sole source of truth.
   useEffect(() => {
+    if (!visible) {
+      return;
+    }
     if (!languageId) {
       setApiTranslations(null);
       setTranslationFetchError(true);
@@ -120,7 +126,7 @@ export const AspectRatingSheet = React.memo(function AspectRatingSheet({
       .finally(() => {
         setIsLoadingTranslations(false);
       });
-  }, [languageId]);
+  }, [visible, languageId]);
 
   // Show a human-readable toast whenever the sheet is open and translations failed to load.
   useEffect(() => {

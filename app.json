@@ -41,7 +41,8 @@
           "photosPermission": "Allow $(PRODUCT_NAME) to access your photos to attach mission evidence."
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-sharing"
     ]
   }
 }
